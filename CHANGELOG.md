@@ -5,6 +5,32 @@ All notable changes to the AWS Penetration Testing MCP Server will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-11
+
+### Added
+
+#### Caching & Performance (2 new tools)
+- **cache_stats** - View cache statistics (hit/miss ratio, cached keys)
+- **cache_clear** - Clear cached data (all or by pattern)
+
+#### Production Features
+- Integrated caching system from `utils.ts`
+- Automatic retry logic with exponential backoff
+- Rate limiting protection for AWS APIs
+- Cache TTLs: EC2 (2min), IAM (10min), S3 (10min)
+
+### Changed
+- Total tools: **45** (up from 43)
+- Key functions now use cache for faster repeated scans
+- API calls wrapped with retry logic for reliability
+
+### Benefits
+- ⚡ Repeated scans return instantly from cache
+- 🛡️ Avoids AWS API throttling on multi-region scans
+- 🔄 Automatic retry on transient failures
+
+---
+
 ## [1.3.0] - 2026-01-11
 
 ### Added

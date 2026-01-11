@@ -46,6 +46,9 @@ import { marked } from "marked";
 import { createObjectCsvWriter } from "csv-writer";
 import * as fs from "fs";
 
+// Utility imports - Caching, Rate Limiting, Retry Logic
+import { cache, withRetry, safeApiCall, rateLimiters } from "./utils.js";
+
 // Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 
@@ -781,6 +784,28 @@ const TOOLS: Tool[] = [
       },
     },
   },
+  // ========== CACHE MANAGEMENT TOOLS ==========
+  {
+    name: "cache_stats",
+    description: "View cache statistics: hit/miss ratio, cached keys, memory usage. Useful for monitoring performance.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "cache_clear",
+    description: "Clear cached data. Use after making AWS changes to get fresh results. Can clear all or specific pattern.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description: "Optional: Clear only keys matching this pattern (e.g., 'ec2', 's3', 'us-east-1'). If omitted, clears all.",
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -970,6 +995,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args?.regions as string | undefined
         ) }] };
 
+      // ========== CACHE MANAGEMENT TOOLS ==========
+      case "cache_stats":
+        return { content: [{ type: "text", text: getCacheStats() }] };
+
+      case "cache_clear":
+        return { content: [{ type: "text", text: clearCache(args?.pattern as string | undefined) }] };
+
       default:
         return {
           content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -987,6 +1019,66 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // ============================================
 // IMPLEMENTATION FUNCTIONS - ORGANIZED BY CATEGORY
 // ============================================
+
+// ========== CACHE MANAGEMENT FUNCTIONS ==========
+
+function getCacheStats(): string {
+  const stats = cache.stats();
+  
+  let output = `# 📊 Cache Statistics\n\n`;
+  output += `**Status:** Enabled ✅\n`;
+  output += `**Cached Items:** ${stats.size}\n\n`;
+  
+  if (stats.size > 0) {
+    output += `## Cached Keys\n\n`;
+    output += `| Key | Type |\n`;
+    output += `|-----|------|\n`;
+    
+    for (const key of stats.keys.slice(0, 20)) {
+      const type = key.split(':')[0] || 'unknown';
+      output += `| \`${key.substring(0, 50)}${key.length > 50 ? '...' : ''}\` | ${type} |\n`;
+    }
+    
+    if (stats.keys.length > 20) {
+      output += `\n*...and ${stats.keys.length - 20} more items*\n`;
+    }
+  } else {
+    output += `*No items cached yet. Run some scans to populate cache.*\n`;
+  }
+  
+  output += `\n## Cache Benefits\n\n`;
+  output += `- ⚡ **Speed:** Repeated scans return instantly from cache\n`;
+  output += `- 🛡️ **Rate Limits:** Reduces AWS API calls, avoids throttling\n`;
+  output += `- 💾 **TTL:** Cache auto-expires (5 min default)\n\n`;
+  output += `## Commands\n\n`;
+  output += `- \`cache_stats\` - View this report\n`;
+  output += `- \`cache_clear\` - Clear all cache\n`;
+  output += `- \`cache_clear pattern: "ec2"\` - Clear EC2 cache only\n`;
+  
+  return output;
+}
+
+function clearCache(pattern?: string): string {
+  if (pattern) {
+    // Clear specific pattern
+    const stats = cache.stats();
+    let cleared = 0;
+    
+    for (const key of stats.keys) {
+      if (key.toLowerCase().includes(pattern.toLowerCase())) {
+        cache.clear(key);
+        cleared++;
+      }
+    }
+    
+    return `✅ Cleared ${cleared} cached items matching "${pattern}"`;
+  } else {
+    // Clear all
+    const count = cache.stats().size;
+    cache.clear();
+    return `✅ Cleared all ${count} cached items. Fresh data will be fetched on next scan.`;
+  }
+}
 
 // ========== UTILITY FUNCTIONS ==========
 
@@ -1268,9 +1360,16 @@ async function analyzeInfrastructureAutomation(region: string, scanMode?: string
 }
 
 async function enumerateEC2Instances(region: string): Promise<string> {
+  // Check cache first
+  const cacheKey = `ec2:instances:${region}`;
+  const cached = cache.get<string>(cacheKey);
+  if (cached) {
+    return cached + `\n\n*📦 Cached result (use \`cache_clear pattern: "ec2"\` for fresh data)*`;
+  }
+
   const client = new EC2Client({ region });
   const command = new DescribeInstancesCommand({});
-  const response = await client.send(command);
+  const response = await withRetry(() => client.send(command));
 
   let output = `# EC2 Instances in ${region}\n\n`;
   let totalInstances = 0;
@@ -1314,6 +1413,9 @@ async function enumerateEC2Instances(region: string): Promise<string> {
     output += `## Security Findings\n`;
     findings.forEach(f => output += `${f}\n`);
   }
+
+  // Cache result for 2 minutes (EC2 can change frequently)
+  cache.set(cacheKey, output, 120000);
 
   return output;
 }
@@ -1609,8 +1711,15 @@ async function enumerateIAMUsers(): Promise<string> {
 }
 
 async function enumerateIAMRoles(): Promise<string> {
+  // Check cache first - IAM is global and changes rarely
+  const cacheKey = `iam:roles`;
+  const cached = cache.get<string>(cacheKey);
+  if (cached) {
+    return cached + `\n\n*📦 Cached result (use \`cache_clear pattern: "iam"\` for fresh data)*`;
+  }
+
   const command = new ListRolesCommand({});
-  const response = await iamClient.send(command);
+  const response = await withRetry(() => iamClient.send(command));
 
   if (!response.Roles || response.Roles.length === 0) {
     return "No IAM roles found";
@@ -1638,6 +1747,9 @@ async function enumerateIAMRoles(): Promise<string> {
     output += `## Security Findings\n`;
     findings.forEach(f => output += `${f}\n`);
   }
+
+  // Cache for 10 minutes - IAM changes rarely
+  cache.set(cacheKey, output, 600000);
 
   return output;
 }
