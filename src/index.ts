@@ -737,7 +737,7 @@ const TOOLS: Tool[] = [
   // ========== MULTI-REGION SCANNING TOOLS ==========
   {
     name: "scan_all_regions",
-    description: "Scan ALL AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache. Use 'common' mode for faster scan (11 regions) or 'all' for complete scan (30+ regions). Returns aggregated findings with region breakdown.",
+    description: "Scan multiple AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc. Specify custom regions OR use presets ('common'=11 regions, 'all'=30+ regions).",
     inputSchema: {
       type: "object",
       properties: {
@@ -746,9 +746,13 @@ const TOOLS: Tool[] = [
           description: "Type of resource to scan: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc, all",
           enum: ["ec2", "lambda", "rds", "eks", "secrets", "guardduty", "elasticache", "vpc", "all"],
         },
+        regions: {
+          type: "string",
+          description: "Custom regions to scan (comma-separated). Examples: 'us-east-1' or 'us-east-1,eu-west-1,ap-southeast-1'. Overrides scanMode if provided.",
+        },
         scanMode: {
           type: "string",
-          description: "Scan mode: 'common' (11 popular regions, faster) or 'all' (30+ regions, slower)",
+          description: "Preset scan mode (ignored if 'regions' is provided): 'common' (11 regions) or 'all' (30+ regions)",
           enum: ["common", "all"],
         },
         parallelism: {
@@ -761,13 +765,17 @@ const TOOLS: Tool[] = [
   },
   {
     name: "list_active_regions",
-    description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence in all regions.",
+    description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence.",
     inputSchema: {
       type: "object",
       properties: {
+        regions: {
+          type: "string",
+          description: "Custom regions to check (comma-separated). Examples: 'us-east-1,eu-west-1'. Overrides scanMode if provided.",
+        },
         scanMode: {
           type: "string",
-          description: "Scan mode: 'common' (11 regions) or 'all' (30+ regions)",
+          description: "Preset scan mode (ignored if 'regions' is provided): 'common' (11 regions) or 'all' (30+ regions)",
           enum: ["common", "all"],
         },
       },
@@ -952,11 +960,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await scanAllRegions(
           args.resourceType as string,
           args.scanMode as string | undefined,
-          args.parallelism as number | undefined
+          args.parallelism as number | undefined,
+          args.regions as string | undefined
         ) }] };
 
       case "list_active_regions":
-        return { content: [{ type: "text", text: await listActiveRegions(args?.scanMode as string | undefined) }] };
+        return { content: [{ type: "text", text: await listActiveRegions(
+          args?.scanMode as string | undefined,
+          args?.regions as string | undefined
+        ) }] };
 
       default:
         return {
@@ -5773,16 +5785,48 @@ async function parallelScan<T>(
   return results;
 }
 
+// Helper to parse custom regions string
+function parseRegions(regionsInput?: string, scanMode?: string): string[] {
+  if (regionsInput) {
+    // Custom regions provided - parse comma-separated list
+    const customRegions = regionsInput.split(',').map(r => r.trim().toLowerCase()).filter(r => r);
+    
+    // Validate regions
+    const invalidRegions = customRegions.filter(r => !AWS_REGIONS.includes(r));
+    if (invalidRegions.length > 0) {
+      console.error(`Warning: Invalid regions ignored: ${invalidRegions.join(', ')}`);
+    }
+    
+    const validRegions = customRegions.filter(r => AWS_REGIONS.includes(r));
+    if (validRegions.length === 0) {
+      throw new Error(`No valid regions provided. Valid regions: ${AWS_REGIONS.slice(0, 5).join(', ')}...`);
+    }
+    return validRegions;
+  }
+  
+  // Use preset mode
+  return scanMode === "all" ? AWS_REGIONS : COMMON_REGIONS;
+}
+
 async function scanAllRegions(
   resourceType: string,
   scanMode?: string,
-  parallelism?: number
+  parallelism?: number,
+  regionsInput?: string
 ): Promise<string> {
-  const regions = scanMode === "all" ? AWS_REGIONS : COMMON_REGIONS;
+  const regions = parseRegions(regionsInput, scanMode);
   const concurrency = Math.min(parallelism || 5, 10);
   
+  // Determine mode description
+  let modeDesc: string;
+  if (regionsInput) {
+    modeDesc = `Custom (${regions.length} region${regions.length > 1 ? 's' : ''}): ${regions.join(', ')}`;
+  } else {
+    modeDesc = scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)";
+  }
+  
   let output = `# Multi-Region Scan: ${resourceType.toUpperCase()}\n\n`;
-  output += `**Mode:** ${scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)"}\n`;
+  output += `**Mode:** ${modeDesc}\n`;
   output += `**Parallelism:** ${concurrency} concurrent scans\n`;
   output += `**Timestamp:** ${new Date().toISOString()}\n\n`;
   output += `---\n\n`;
@@ -5913,11 +5957,19 @@ async function scanAllRegions(
   return output;
 }
 
-async function listActiveRegions(scanMode?: string): Promise<string> {
-  const regions = scanMode === "all" ? AWS_REGIONS : COMMON_REGIONS;
+async function listActiveRegions(scanMode?: string, regionsInput?: string): Promise<string> {
+  const regions = parseRegions(regionsInput, scanMode);
+  
+  // Determine mode description
+  let modeDesc: string;
+  if (regionsInput) {
+    modeDesc = `Custom (${regions.length} region${regions.length > 1 ? 's' : ''}): ${regions.join(', ')}`;
+  } else {
+    modeDesc = scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)";
+  }
   
   let output = `# Active AWS Regions Discovery\n\n`;
-  output += `**Mode:** ${scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)"}\n`;
+  output += `**Mode:** ${modeDesc}\n`;
   output += `**Timestamp:** ${new Date().toISOString()}\n\n`;
   
   interface RegionActivity {
