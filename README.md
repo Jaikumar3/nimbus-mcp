@@ -195,6 +195,34 @@ For VS Code: Add to .vscode/mcp.json
 </details>
 
 <details>
+<summary><b>🌐 Multi-Region Scanning Tools (2)</b> - Click to expand ⭐ NEW</summary>
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `scan_all_regions` | Scan multiple AWS regions for resources in parallel. Supports EC2, Lambda, RDS, EKS, Secrets, GuardDuty, ElastiCache, VPC. | `resourceType: ec2, regions: "us-east-1,eu-west-1"` |
+| `list_active_regions` | Quick discovery of which regions have resources deployed. Checks EC2, Lambda, RDS counts per region. | `scanMode: common` or `regions: "us-east-1"` |
+
+**Usage Examples:**
+```bash
+# Single region scan
+scan_all_regions --resourceType ec2 --regions "us-east-1"
+
+# Multiple specific regions
+scan_all_regions --resourceType lambda --regions "us-east-1,eu-west-1,ap-southeast-1"
+
+# Preset: Common regions (11 popular regions)
+scan_all_regions --resourceType rds --scanMode common
+
+# Preset: All regions (30+ regions)
+scan_all_regions --resourceType all --scanMode all --parallelism 10
+
+# Discover active regions first
+list_active_regions --scanMode common
+```
+
+</details>
+
+<details>
 <summary><b>🛡️ Security Scanning Tools (13)</b> - Click to expand</summary>
 
 | Tool | Security Checks | Severity Findings |
