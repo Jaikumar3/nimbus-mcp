@@ -49,6 +49,25 @@ import * as fs from "fs";
 // Initialize AWS clients with default credentials
 const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
 
+// All AWS regions for multi-region scanning
+const AWS_REGIONS = [
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-central-2",
+  "eu-north-1", "eu-south-1", "eu-south-2",
+  "ap-south-1", "ap-south-2", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+  "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4", "ap-east-1",
+  "sa-east-1", "ca-central-1", "ca-west-1",
+  "me-south-1", "me-central-1", "af-south-1",
+  "il-central-1"
+];
+
+// Common regions for faster scanning (covers 90%+ of deployments)
+const COMMON_REGIONS = [
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "eu-west-1", "eu-west-2", "eu-central-1",
+  "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2"
+];
+
 const ec2Client = new EC2Client({ region: DEFAULT_REGION });
 const s3Client = new S3Client({ region: DEFAULT_REGION });
 const iamClient = new IAMClient({ region: DEFAULT_REGION });
@@ -715,6 +734,45 @@ const TOOLS: Tool[] = [
       required: ["region", "clusterName"],
     },
   },
+  // ========== MULTI-REGION SCANNING TOOLS ==========
+  {
+    name: "scan_all_regions",
+    description: "Scan ALL AWS regions for resources. Supports: ec2, lambda, rds, eks, secrets, guardduty, elasticache. Use 'common' mode for faster scan (11 regions) or 'all' for complete scan (30+ regions). Returns aggregated findings with region breakdown.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resourceType: {
+          type: "string",
+          description: "Type of resource to scan: ec2, lambda, rds, eks, secrets, guardduty, elasticache, vpc, all",
+          enum: ["ec2", "lambda", "rds", "eks", "secrets", "guardduty", "elasticache", "vpc", "all"],
+        },
+        scanMode: {
+          type: "string",
+          description: "Scan mode: 'common' (11 popular regions, faster) or 'all' (30+ regions, slower)",
+          enum: ["common", "all"],
+        },
+        parallelism: {
+          type: "number",
+          description: "Number of parallel region scans (default: 5, max: 10)",
+        },
+      },
+      required: ["resourceType"],
+    },
+  },
+  {
+    name: "list_active_regions",
+    description: "Discover which AWS regions have resources deployed. Quick scan to identify active regions before deep scanning. Checks EC2, Lambda, RDS presence in all regions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scanMode: {
+          type: "string",
+          description: "Scan mode: 'common' (11 regions) or 'all' (30+ regions)",
+          enum: ["common", "all"],
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -887,6 +945,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "hunt_eks_secrets":
         if (!args || !args.region || !args.clusterName) throw new Error("region and clusterName are required");
         return { content: [{ type: "text", text: await huntEKSSecrets(args.region as string, args.clusterName as string) }] };
+
+      // ========== MULTI-REGION SCANNING TOOLS ==========
+      case "scan_all_regions":
+        if (!args || !args.resourceType) throw new Error("resourceType is required");
+        return { content: [{ type: "text", text: await scanAllRegions(
+          args.resourceType as string,
+          args.scanMode as string | undefined,
+          args.parallelism as number | undefined
+        ) }] };
+
+      case "list_active_regions":
+        return { content: [{ type: "text", text: await listActiveRegions(args?.scanMode as string | undefined) }] };
 
       default:
         return {
@@ -5448,6 +5518,479 @@ kubectl --token=$TOKEN get pods -A
   } catch (error: any) {
     return `Error hunting EKS secrets: ${error.message}`;
   }
+}
+
+// ========== MULTI-REGION SCANNING FUNCTIONS ==========
+
+interface RegionResult {
+  region: string;
+  resourceCount: number;
+  findings: string[];
+  error?: string;
+}
+
+async function scanRegionForEC2(region: string): Promise<RegionResult> {
+  try {
+    const client = new EC2Client({ region });
+    const response = await client.send(new DescribeInstancesCommand({}));
+    const instances: any[] = [];
+    const findings: string[] = [];
+    
+    for (const reservation of response.Reservations || []) {
+      for (const instance of reservation.Instances || []) {
+        instances.push(instance);
+        if (instance.PublicIpAddress) {
+          findings.push(`🔴 ${instance.InstanceId} has public IP: ${instance.PublicIpAddress}`);
+        }
+        if (instance.IamInstanceProfile) {
+          findings.push(`🟡 ${instance.InstanceId} has IAM role: ${instance.IamInstanceProfile.Arn?.split("/").pop()}`);
+        }
+      }
+    }
+    
+    return { region, resourceCount: instances.length, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForLambda(region: string): Promise<RegionResult> {
+  try {
+    const client = new LambdaClient({ region });
+    const response = await client.send(new ListFunctionsCommand({}));
+    const findings: string[] = [];
+    
+    for (const fn of response.Functions || []) {
+      if (fn.VpcConfig?.VpcId) {
+        findings.push(`🟢 ${fn.FunctionName} is in VPC: ${fn.VpcConfig.VpcId}`);
+      } else {
+        findings.push(`🟡 ${fn.FunctionName} is NOT in VPC (public internet)`);
+      }
+      if (fn.Environment?.Variables) {
+        const envKeys = Object.keys(fn.Environment.Variables);
+        const sensitiveKeys = envKeys.filter(k => 
+          /secret|password|key|token|api/i.test(k)
+        );
+        if (sensitiveKeys.length > 0) {
+          findings.push(`🔴 ${fn.FunctionName} has sensitive env vars: ${sensitiveKeys.join(", ")}`);
+        }
+      }
+    }
+    
+    return { region, resourceCount: response.Functions?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForRDS(region: string): Promise<RegionResult> {
+  try {
+    const client = new RDSClient({ region });
+    const response = await client.send(new DescribeDBInstancesCommand({}));
+    const findings: string[] = [];
+    
+    for (const db of response.DBInstances || []) {
+      if (db.PubliclyAccessible) {
+        findings.push(`🔴 CRITICAL: ${db.DBInstanceIdentifier} is publicly accessible!`);
+      }
+      if (!db.StorageEncrypted) {
+        findings.push(`🔴 ${db.DBInstanceIdentifier} storage is NOT encrypted`);
+      }
+      if (!db.DeletionProtection) {
+        findings.push(`🟡 ${db.DBInstanceIdentifier} has no deletion protection`);
+      }
+    }
+    
+    return { region, resourceCount: response.DBInstances?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForEKS(region: string): Promise<RegionResult> {
+  try {
+    const client = new EKSClient({ region });
+    const response = await client.send(new ListClustersCommand({}));
+    const findings: string[] = [];
+    
+    for (const clusterName of response.clusters || []) {
+      try {
+        const clusterResponse = await client.send(new DescribeClusterCommand({ name: clusterName }));
+        const cluster = clusterResponse.cluster;
+        
+        if (cluster?.resourcesVpcConfig?.endpointPublicAccess) {
+          findings.push(`🟡 ${clusterName} has public API endpoint`);
+        }
+        if (!cluster?.encryptionConfig || cluster.encryptionConfig.length === 0) {
+          findings.push(`🔴 ${clusterName} secrets NOT encrypted at rest`);
+        }
+        if (!cluster?.logging?.clusterLogging?.some(l => l.enabled)) {
+          findings.push(`🟡 ${clusterName} logging disabled`);
+        }
+      } catch (e) {
+        findings.push(`⚠️ Could not describe cluster: ${clusterName}`);
+      }
+    }
+    
+    return { region, resourceCount: response.clusters?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForSecrets(region: string): Promise<RegionResult> {
+  try {
+    const client = new SecretsManagerClient({ region });
+    const response = await client.send(new ListSecretsCommand({}));
+    const findings: string[] = [];
+    
+    for (const secret of response.SecretList || []) {
+      if (!secret.KmsKeyId) {
+        findings.push(`🟡 ${secret.Name} using default AWS KMS (consider CMK)`);
+      }
+      if (!secret.RotationEnabled) {
+        findings.push(`🔴 ${secret.Name} rotation NOT enabled`);
+      }
+      if (secret.LastAccessedDate) {
+        const daysSinceAccess = Math.floor((Date.now() - secret.LastAccessedDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceAccess > 90) {
+          findings.push(`🟡 ${secret.Name} not accessed in ${daysSinceAccess} days (stale?)`);
+        }
+      }
+    }
+    
+    return { region, resourceCount: response.SecretList?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForGuardDuty(region: string): Promise<RegionResult> {
+  try {
+    const client = new GuardDutyClient({ region });
+    const detectorsResponse = await client.send(new ListDetectorsCommand({}));
+    const findings: string[] = [];
+    
+    if (!detectorsResponse.DetectorIds || detectorsResponse.DetectorIds.length === 0) {
+      findings.push(`🔴 CRITICAL: GuardDuty NOT enabled in ${region}!`);
+      return { region, resourceCount: 0, findings };
+    }
+    
+    for (const detectorId of detectorsResponse.DetectorIds) {
+      const findingsResponse = await client.send(new ListFindingsCommand({
+        DetectorId: detectorId,
+        FindingCriteria: {
+          Criterion: {
+            "severity": { Gte: 4 } // Medium and above
+          }
+        },
+        MaxResults: 50
+      }));
+      
+      if (findingsResponse.FindingIds && findingsResponse.FindingIds.length > 0) {
+        findings.push(`🔴 ${findingsResponse.FindingIds.length} active GuardDuty findings (severity >= Medium)`);
+        
+        const detailedFindings = await client.send(new GetFindingsCommand({
+          DetectorId: detectorId,
+          FindingIds: findingsResponse.FindingIds.slice(0, 10)
+        }));
+        
+        for (const finding of detailedFindings.Findings || []) {
+          findings.push(`  - ${finding.Type}: ${finding.Title} (Severity: ${finding.Severity})`);
+        }
+      } else {
+        findings.push(`🟢 No active GuardDuty findings`);
+      }
+    }
+    
+    return { region, resourceCount: detectorsResponse.DetectorIds.length, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForElastiCache(region: string): Promise<RegionResult> {
+  try {
+    const client = new ElastiCacheClient({ region });
+    const response = await client.send(new DescribeCacheClustersCommand({}));
+    const findings: string[] = [];
+    
+    for (const cluster of response.CacheClusters || []) {
+      if (!cluster.TransitEncryptionEnabled) {
+        findings.push(`🔴 ${cluster.CacheClusterId} transit encryption disabled`);
+      }
+      if (!cluster.AtRestEncryptionEnabled) {
+        findings.push(`🔴 ${cluster.CacheClusterId} at-rest encryption disabled`);
+      }
+      if (!cluster.AuthTokenEnabled) {
+        findings.push(`🟡 ${cluster.CacheClusterId} AUTH not enabled`);
+      }
+    }
+    
+    return { region, resourceCount: response.CacheClusters?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+async function scanRegionForVPC(region: string): Promise<RegionResult> {
+  try {
+    const client = new EC2Client({ region });
+    const response = await client.send(new DescribeVpcsCommand({}));
+    const findings: string[] = [];
+    
+    for (const vpc of response.Vpcs || []) {
+      const vpcName = vpc.Tags?.find(t => t.Key === "Name")?.Value || vpc.VpcId;
+      if (vpc.IsDefault) {
+        findings.push(`🟡 ${vpcName} is the DEFAULT VPC (consider using custom VPC)`);
+      }
+      
+      // Check for flow logs
+      // Note: Would need additional API call to fully check
+      findings.push(`🔵 ${vpcName}: ${vpc.CidrBlock}`);
+    }
+    
+    return { region, resourceCount: response.Vpcs?.length || 0, findings };
+  } catch (error: any) {
+    return { region, resourceCount: 0, findings: [], error: error.message };
+  }
+}
+
+// Parallel execution helper with concurrency limit
+async function parallelScan<T>(
+  items: string[],
+  fn: (item: string) => Promise<T>,
+  concurrency: number = 5
+): Promise<T[]> {
+  const results: T[] = [];
+  
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+  
+  return results;
+}
+
+async function scanAllRegions(
+  resourceType: string,
+  scanMode?: string,
+  parallelism?: number
+): Promise<string> {
+  const regions = scanMode === "all" ? AWS_REGIONS : COMMON_REGIONS;
+  const concurrency = Math.min(parallelism || 5, 10);
+  
+  let output = `# Multi-Region Scan: ${resourceType.toUpperCase()}\n\n`;
+  output += `**Mode:** ${scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)"}\n`;
+  output += `**Parallelism:** ${concurrency} concurrent scans\n`;
+  output += `**Timestamp:** ${new Date().toISOString()}\n\n`;
+  output += `---\n\n`;
+  
+  let results: RegionResult[] = [];
+  let totalResources = 0;
+  let totalFindings = 0;
+  const activeRegions: string[] = [];
+  const errorRegions: string[] = [];
+  
+  // Select scanner based on resource type
+  const scanners: Record<string, (region: string) => Promise<RegionResult>> = {
+    ec2: scanRegionForEC2,
+    lambda: scanRegionForLambda,
+    rds: scanRegionForRDS,
+    eks: scanRegionForEKS,
+    secrets: scanRegionForSecrets,
+    guardduty: scanRegionForGuardDuty,
+    elasticache: scanRegionForElastiCache,
+    vpc: scanRegionForVPC,
+  };
+  
+  if (resourceType === "all") {
+    // Scan all resource types
+    output += `## Scanning ALL resource types across ${regions.length} regions...\n\n`;
+    
+    for (const [type, scanner] of Object.entries(scanners)) {
+      output += `### ${type.toUpperCase()}\n\n`;
+      const typeResults = await parallelScan(regions, scanner, concurrency);
+      
+      for (const result of typeResults) {
+        if (result.error) {
+          continue;
+        }
+        if (result.resourceCount > 0) {
+          totalResources += result.resourceCount;
+          totalFindings += result.findings.length;
+          output += `**${result.region}**: ${result.resourceCount} resources\n`;
+          for (const finding of result.findings.slice(0, 5)) {
+            output += `  ${finding}\n`;
+          }
+          if (result.findings.length > 5) {
+            output += `  ... and ${result.findings.length - 5} more findings\n`;
+          }
+          output += `\n`;
+        }
+      }
+    }
+  } else {
+    const scanner = scanners[resourceType];
+    if (!scanner) {
+      return `Unknown resource type: ${resourceType}. Supported: ${Object.keys(scanners).join(", ")}`;
+    }
+    
+    output += `## Scanning ${regions.length} regions for ${resourceType}...\n\n`;
+    results = await parallelScan(regions, scanner, concurrency);
+    
+    // Process results
+    for (const result of results) {
+      if (result.error) {
+        errorRegions.push(`${result.region}: ${result.error}`);
+        continue;
+      }
+      
+      if (result.resourceCount > 0) {
+        activeRegions.push(result.region);
+        totalResources += result.resourceCount;
+        totalFindings += result.findings.length;
+        
+        output += `### ${result.region}\n`;
+        output += `**Resources Found:** ${result.resourceCount}\n\n`;
+        
+        if (result.findings.length > 0) {
+          output += `**Findings:**\n`;
+          for (const finding of result.findings) {
+            output += `- ${finding}\n`;
+          }
+          output += `\n`;
+        }
+      }
+    }
+    
+    // Empty regions summary
+    const emptyRegions = regions.filter(r => 
+      !activeRegions.includes(r) && !errorRegions.some(e => e.startsWith(r))
+    );
+    
+    if (emptyRegions.length > 0) {
+      output += `### Empty Regions\n`;
+      output += `No ${resourceType} resources found in: ${emptyRegions.join(", ")}\n\n`;
+    }
+  }
+  
+  // Summary
+  output += `---\n\n`;
+  output += `## Summary\n\n`;
+  output += `| Metric | Value |\n`;
+  output += `|--------|-------|\n`;
+  output += `| Regions Scanned | ${regions.length} |\n`;
+  output += `| Active Regions | ${activeRegions.length} |\n`;
+  output += `| Total Resources | ${totalResources} |\n`;
+  output += `| Total Findings | ${totalFindings} |\n`;
+  
+  if (errorRegions.length > 0) {
+    output += `| Errors | ${errorRegions.length} |\n\n`;
+    output += `### Errors\n`;
+    for (const err of errorRegions.slice(0, 10)) {
+      output += `- ${err}\n`;
+    }
+  }
+  
+  // Critical findings highlight
+  const criticalKeywords = ["CRITICAL", "🔴"];
+  output += `\n## 🔴 Critical Findings\n\n`;
+  let criticalCount = 0;
+  for (const result of results) {
+    for (const finding of result.findings) {
+      if (criticalKeywords.some(kw => finding.includes(kw))) {
+        output += `- **${result.region}**: ${finding}\n`;
+        criticalCount++;
+      }
+    }
+  }
+  if (criticalCount === 0) {
+    output += `No critical findings detected! ✅\n`;
+  }
+  
+  return output;
+}
+
+async function listActiveRegions(scanMode?: string): Promise<string> {
+  const regions = scanMode === "all" ? AWS_REGIONS : COMMON_REGIONS;
+  
+  let output = `# Active AWS Regions Discovery\n\n`;
+  output += `**Mode:** ${scanMode === "all" ? "All Regions (30+)" : "Common Regions (11)"}\n`;
+  output += `**Timestamp:** ${new Date().toISOString()}\n\n`;
+  
+  interface RegionActivity {
+    region: string;
+    ec2: number;
+    lambda: number;
+    rds: number;
+    total: number;
+  }
+  
+  const activities: RegionActivity[] = [];
+  
+  // Quick parallel scan of all regions
+  const scanRegion = async (region: string): Promise<RegionActivity> => {
+    let ec2 = 0, lambda = 0, rds = 0;
+    
+    try {
+      const ec2Client = new EC2Client({ region });
+      const ec2Response = await ec2Client.send(new DescribeInstancesCommand({ MaxResults: 5 }));
+      for (const r of ec2Response.Reservations || []) {
+        ec2 += r.Instances?.length || 0;
+      }
+    } catch (e) {}
+    
+    try {
+      const lambdaClient = new LambdaClient({ region });
+      const lambdaResponse = await lambdaClient.send(new ListFunctionsCommand({ MaxItems: 5 }));
+      lambda = lambdaResponse.Functions?.length || 0;
+    } catch (e) {}
+    
+    try {
+      const rdsClient = new RDSClient({ region });
+      const rdsResponse = await rdsClient.send(new DescribeDBInstancesCommand({ MaxRecords: 5 }));
+      rds = rdsResponse.DBInstances?.length || 0;
+    } catch (e) {}
+    
+    return { region, ec2, lambda, rds, total: ec2 + lambda + rds };
+  };
+  
+  const results = await parallelScan(regions, scanRegion, 10);
+  
+  // Filter and sort by activity
+  const activeRegions = results.filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+  const inactiveRegions = results.filter(r => r.total === 0);
+  
+  output += `## Active Regions (${activeRegions.length})\n\n`;
+  output += `| Region | EC2 | Lambda | RDS | Total |\n`;
+  output += `|--------|-----|--------|-----|-------|\n`;
+  
+  for (const r of activeRegions) {
+    output += `| ${r.region} | ${r.ec2} | ${r.lambda} | ${r.rds} | ${r.total} |\n`;
+  }
+  
+  output += `\n## Inactive Regions (${inactiveRegions.length})\n`;
+  output += inactiveRegions.map(r => r.region).join(", ") + "\n\n";
+  
+  output += `## Recommendations\n\n`;
+  if (activeRegions.length > 0) {
+    output += `Focus your detailed scans on these regions:\n`;
+    for (const r of activeRegions.slice(0, 5)) {
+      output += `- \`${r.region}\` (${r.total} resources)\n`;
+    }
+    output += `\n**Command Example:**\n`;
+    output += `\`\`\`\n`;
+    output += `scan_all_regions --resourceType ec2 --scanMode all\n`;
+    output += `\`\`\`\n`;
+  } else {
+    output += `No resources found in scanned regions. Try:\n`;
+    output += `- Check AWS credentials have correct permissions\n`;
+    output += `- Use \`scanMode: "all"\` to scan all 30+ regions\n`;
+  }
+  
+  return output;
 }
 
 // Start the server

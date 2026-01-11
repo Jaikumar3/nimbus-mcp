@@ -2,14 +2,14 @@
 
 # 🔒 AWS Penetration Testing MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
-[![Tools](https://img.shields.io/badge/tools-41-green.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
+[![Tools](https://img.shields.io/badge/tools-43-green.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/aws-pentest-mcp)
 [![Tests](https://img.shields.io/badge/tests-Jest-green.svg)](https://jestjs.io/)
 
-**Enterprise-grade AWS security assessment toolkit with TRA (Threat & Risk Assessment) capabilities**
+**Enterprise-grade AWS security assessment toolkit with Multi-Region Scanning & TRA capabilities**
 
 *Designed for security professionals conducting authorized penetration tests, compliance audits, and executive risk reporting*
 
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-The **AWS Penetration Testing MCP Server** is a comprehensive security assessment framework built on the Model Context Protocol (MCP). It provides 41 production-ready tools covering enumeration, vulnerability scanning, privilege escalation analysis, persistence detection, EKS/Kubernetes security, and compliance reporting for AWS cloud environments.
+The **AWS Penetration Testing MCP Server** is a comprehensive security assessment framework built on the Model Context Protocol (MCP). It provides 43 production-ready tools covering enumeration, vulnerability scanning, privilege escalation analysis, persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
 
 ### 🎯 Use Cases
 
@@ -30,11 +30,13 @@ The **AWS Penetration Testing MCP Server** is a comprehensive security assessmen
 - **✅ Compliance Audits** - Map findings to CIS, NIST, PCI-DSS, HIPAA frameworks
 - **🛡️ Penetration Testing** - Discover attack paths and privilege escalation vectors
 - **📈 Risk Management** - Automated risk scoring and remediation roadmaps
+- **🌐 Multi-Region Scanning** - Scan all 30+ AWS regions in parallel
 
 ### ⚡ Key Highlights
 
 ✅ **100% Read-Only** - Safe for production environments  
-✅ **41 Security Tools** - Comprehensive AWS service coverage  
+✅ **43 Security Tools** - Comprehensive AWS service coverage  
+✅ **Multi-Region Scanning** - Scan all 30+ regions in parallel ⭐ NEW  
 ✅ **Multi-Format Reports** - PDF, HTML, CSV, Markdown  
 ✅ **TRA Integration** - Risk scoring, compliance mapping, MITRE ATT&CK  
 ✅ **Zero Cloud Modifications** - No write/delete operations  

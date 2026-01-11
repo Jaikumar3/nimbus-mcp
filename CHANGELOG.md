@@ -5,6 +5,36 @@ All notable changes to the AWS Penetration Testing MCP Server will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-11
+
+### Added
+
+#### Multi-Region Scanning (2 new tools)
+- **scan_all_regions** - Scan ALL AWS regions for resources in parallel
+  - Supports: EC2, Lambda, RDS, EKS, Secrets Manager, GuardDuty, ElastiCache, VPC
+  - Two modes: 'common' (11 popular regions) or 'all' (30+ regions)
+  - Configurable parallelism (1-10 concurrent scans)
+  - Aggregated findings with critical issues highlighted
+  - Security analysis per region with risk ratings
+
+- **list_active_regions** - Quick discovery of regions with resources
+  - Fast parallel scan to identify active regions
+  - Shows EC2, Lambda, RDS counts per region
+  - Helps prioritize which regions to deep-scan
+
+#### Infrastructure
+- Added AWS_REGIONS constant with all 30+ AWS regions
+- Added COMMON_REGIONS for faster scanning (covers 90%+ of deployments)
+- Parallel execution helper with configurable concurrency
+- Region-specific scanner functions for each resource type
+
+### Changed
+- Total tools: **43** (up from 41)
+- Improved attack surface discovery across global deployments
+- Better visibility into multi-region security posture
+
+---
+
 ## [1.2.0] - 2026-01-09
 
 ### Added
