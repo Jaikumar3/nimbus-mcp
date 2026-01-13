@@ -85,7 +85,7 @@
 </td>
 <td width="50%">
 
-### � Advanced Security (7 Tools) ⭐ NEW
+### Advanced Security (7 Tools) NEW
 - **CloudWatch Security** - Missing alarms, monitoring gaps
 - **IAM Escalation** - PassRole abuse, AssumeRole chains
 - **SSM Security** - Documents, parameters, session logging
@@ -169,7 +169,7 @@ For VS Code: Add to .vscode/mcp.json
 #mcp_nimbus_scan_s3_bucket_security bucketName: my-production-bucket
 
 # 📊 Generate executive TRA report (PDF)
-#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2025.pdf
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\aws-security-2026.pdf
 ```
 
 ## 📋 Complete Tool Reference
@@ -278,7 +278,7 @@ list_active_regions --scanMode common
                        │ MCP Protocol
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              AWS Pentest MCP Server (Node.js)               │
+│                  Nimbus MCP Server (Node.js)                │
 │  ┌───────────┬────────────┬──────────────┬────────────┐    │
 │  │Enumeration│  Scanning  │Attack Analysis│    TRA     │    │
 │  │ (10 tools)│ (13 tools) │  (2 tools)   │  (1 tool)  │    │
@@ -557,7 +557,7 @@ This tool helps assess compliance with:
 
 ```bash
 # Single command for comprehensive assessment
-#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2025-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
+#mcp_nimbus_generate_security_report region: us-east-1 format: pdf outputFile: C:\reports\TRA-Report-2026-Q4.pdf fullScan: true includeCompliance: true includeRemediation: true
 ```
 
 **Report Includes:**
@@ -646,7 +646,7 @@ Testing activities must not:
 
 **MIT License** - See [LICENSE](LICENSE) file for details
 
-Copyright (c) 2025 jaikumar3
+Copyright (c) 2026 jaikumar3
 
 ---
 
