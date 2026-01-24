@@ -1,7 +1,7 @@
 {
   "name": "nimbus-mcp",
-  "version": "1.4.2",
-  "description": "Nimbus - AWS Security Assessment MCP Server - 43 Tools with TRA, Caching & Multi-Region",
+  "version": "1.5.0",
+  "description": "Nimbus - AWS Security Assessment MCP Server - 40 Tools with Attack Chains, EKS Security & TRA",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

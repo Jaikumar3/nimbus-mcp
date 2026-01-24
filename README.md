@@ -2,14 +2,14 @@
 
 # Nimbus - AWS Security Assessment MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
-[![Tools](https://img.shields.io/badge/tools-43-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/jaikumar3/nimbus-mcp)
+[![Tools](https://img.shields.io/badge/tools-40-green.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK-v3-yellow.svg)](https://aws.amazon.com/sdk-for-javascript/)
 [![Status](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)](https://github.com/jaikumar3/nimbus-mcp)
 [![Tests](https://img.shields.io/badge/tests-Jest-green.svg)](https://jestjs.io/)
 
-**Enterprise-grade AWS security assessment toolkit with Multi-Region Scanning & TRA capabilities**
+**Enterprise-grade AWS security assessment toolkit with Attack Chain Builder, 50+ Privesc Patterns & Multi-Region Scanning**
 
 *Designed for security professionals conducting authorized penetration tests, compliance audits, and executive risk reporting*
 
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 43 production-ready tools covering enumeration, vulnerability scanning, privilege escalation analysis, persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
+**Nimbus** is a comprehensive AWS security assessment framework built on the Model Context Protocol (MCP). It provides 40 production-ready tools covering enumeration, vulnerability scanning, **attack chain building**, privilege escalation analysis (50+ patterns), persistence detection, EKS/Kubernetes security, **multi-region scanning**, and compliance reporting for AWS cloud environments.
 
 ### 🎯 Use Cases
 
@@ -31,18 +31,20 @@
 - **🛡️ Penetration Testing** - Discover attack paths and privilege escalation vectors
 - **📈 Risk Management** - Automated risk scoring and remediation roadmaps
 - **🌐 Multi-Region Scanning** - Scan all 30+ AWS regions in parallel
+- **🔗 Attack Chain Analysis** - Multi-step attack path discovery ⭐ NEW
 
 ### ⚡ Key Highlights
 
 ✅ **100% Read-Only** - Safe for production environments  
-✅ **43 Security Tools** - Comprehensive AWS service coverage  
-✅ **Multi-Region Scanning** - Scan all 30+ regions in parallel ⭐ NEW  
+✅ **40 Security Tools** - Comprehensive AWS service coverage  
+✅ **Attack Chain Builder** - Multi-step attack path discovery ⭐ NEW  
+✅ **50+ Privesc Patterns** - Rhino Security Labs & Heimdall research ⭐ NEW  
+✅ **EKS Attack Surface** - IRSA abuse, node role theft, RBAC escalation ⭐ NEW  
+✅ **Multi-Region Scanning** - Scan all 30+ regions in parallel  
 ✅ **Multi-Format Reports** - PDF, HTML, CSV, Markdown  
 ✅ **TRA Integration** - Risk scoring, compliance mapping, MITRE ATT&CK  
 ✅ **Zero Cloud Modifications** - No write/delete operations  
-✅ **EKS/Kubernetes** - Service account and secret hunting tools  
-✅ **Enterprise Ready** - Professional reports for executives and auditors  
-✅ **Production Quality** - Caching, rate limiting, retry logic, unit tests
+✅ **Enterprise Ready** - Professional reports for executives and auditors
 
 ## 🎯 Key Features
 
@@ -60,9 +62,10 @@
 </td>
 <td width="50%">
 
-### 🛡️ Security Scanning (20 Tools)
+### 🛡️ Security Scanning (25 Tools)
 - **S3 Security** - 7 comprehensive checks (encryption, ACLs, policies)
-- **IAM Analysis** - Wildcard permissions, privilege escalation paths
+- **IAM Analysis** - Wildcard permissions, 50+ privilege escalation patterns ⭐
+- **Attack Chain Builder** - Multi-step attack path discovery ⭐ NEW
 - **Network Security** - Security Groups, VPC exposure, egress points
 - **Data Protection** - DynamoDB, ElastiCache, RDS encryption
 - **API Security** - API Gateway, CloudFront configuration
@@ -78,14 +81,17 @@
 <tr>
 <td width="50%">
 
-### 🎯 Attack Analysis (2 Tools)
-- **Privilege Escalation** - IAM attack path discovery
-- **Comprehensive Reports** - Multi-format exports (PDF/HTML/CSV)
+### 🔗 Attack Chain Analysis (5 Tools) ⭐ NEW
+- **build_attack_chains** - Multi-step attack path discovery
+- **analyze_eks_attack_surface** - EKS IRSA & node role abuse
+- **detect_privesc_patterns** - 50+ IAM privilege escalation patterns
+- **hunt_eks_secrets** - Kubernetes secret enumeration
+- **scan_eks_service_accounts** - Service account security audit
 
 </td>
 <td width="50%">
 
-### Advanced Security (7 Tools) NEW
+### Advanced Security (7 Tools)
 - **CloudWatch Security** - Missing alarms, monitoring gaps
 - **IAM Escalation** - PassRole abuse, AssumeRole chains
 - **SSM Security** - Documents, parameters, session logging
@@ -97,6 +103,19 @@
 </td>
 </tr>
 </table>
+
+### 🎯 50+ Privilege Escalation Patterns
+
+| Category | Patterns | Description |
+|----------|----------|-------------|
+| **PassRole Abuse** | 7 | Lambda, EC2, Glue, CloudFormation, CodeBuild, SageMaker, ECS |
+| **Policy Manipulation** | 6 | AttachPolicy, PutPolicy, CreatePolicyVersion |
+| **Credential Access** | 4 | CreateAccessKey, LoginProfile, UpdateAssumeRole |
+| **EKS Abuse** | 5 | IRSA, Node role theft, Fargate, Cluster admin |
+| **Lambda Abuse** | 3 | UpdateFunctionCode, Layers, Env secrets |
+| **SSM Abuse** | 3 | SendCommand, StartSession, GetParameters |
+| **S3 Abuse** | 2 | Replication, BucketPolicy |
+| **Defense Evasion** | 3 | CloudTrail, GuardDuty disable |
 
 ### 📄 Report Formats
 

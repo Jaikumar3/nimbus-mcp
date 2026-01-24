@@ -5,6 +5,83 @@ All notable changes to **Nimbus** (AWS Security Assessment MCP Server) will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-13
+
+### Added
+
+#### Attack Chain Builder & Advanced Privilege Escalation (3 new tools)
+- **build_attack_chains** - Build multi-step attack paths from IAM findings
+  - Identifies complete attack chains: initial access → privilege escalation → lateral movement → data exfiltration
+  - MITRE ATT&CK technique mapping for all chains
+  - Blast radius scoring (0-100) based on compromised resources
+  - Chain categories: PassRole abuse, Policy manipulation, Credential access
+  - Mermaid diagram output for visualization
+  - 6 pre-built attack chain templates
+
+- **analyze_eks_attack_surface** - Comprehensive EKS security analysis
+  - IRSA (IAM Roles for Service Accounts) abuse detection
+  - Node role credential theft via IMDS analysis
+  - Cluster config manipulation vectors
+  - Pod security risks assessment
+  - Kubernetes RBAC to AWS IAM privilege escalation paths
+  - Fargate profile security analysis
+  - Node group role auditing
+
+- **detect_privesc_patterns** - 50+ IAM privilege escalation pattern detection
+  - Based on Rhino Security Labs & Heimdall research
+  - Categories: PassRole abuse, Policy manipulation, Credential access, EKS abuse, Lambda abuse, SSM abuse, S3 abuse, Defense evasion
+  - MITRE ATT&CK mapping for all patterns
+  - Detailed exploitation commands
+  - Remediation recommendations
+
+### Changed
+- **Tool Consolidation** - Reduced tool count from 46 to 40 by merging overlapping functionality:
+  - Merged `scan_privilege_escalation_paths` into `detect_privesc_patterns`
+  - Merged `analyze_iam_privilege_escalation` into `detect_privesc_patterns`
+  - Merged `analyze_attack_paths` into `build_attack_chains`
+  - Merged `detect_cross_account_access` into `analyze_cross_account_movement`
+  - Merged `detect_service_role_risks` into `detect_permissive_roles`
+  - Merged `scan_for_backdoors` into `detect_persistence_mechanisms`
+
+#### New Privesc Patterns Added
+- **PassRole Abuse (7 patterns):**
+  - PassRole → Lambda, EC2, Glue, CloudFormation, CodeBuild, SageMaker, ECS
+
+- **Policy Manipulation (6 patterns):**
+  - AttachUserPolicy, AttachRolePolicy, PutUserPolicy, PutRolePolicy, CreatePolicyVersion, SetDefaultPolicyVersion
+
+- **Credential Access (4 patterns):**
+  - CreateAccessKey, CreateLoginProfile, UpdateLoginProfile, UpdateAssumeRolePolicy
+
+- **EKS Abuse (5 patterns):**
+  - IRSA pod execution abuse, Node role credential theft, EKS cluster admin access, Fargate profile PassRole, EKS wildcard describe
+
+- **Lambda Abuse (3 patterns):**
+  - UpdateFunctionCode, Lambda layer backdoor, Environment variable secrets
+
+- **SSM Abuse (3 patterns):**
+  - SendCommand, StartSession, GetParameters
+
+- **S3 Abuse (2 patterns):**
+  - Data exfiltration via replication, Bucket policy modification
+
+- **Defense Evasion (3 patterns):**
+  - CloudTrail stop/delete, GuardDuty disable
+
+### Changed
+- Total tools: **48** (up from 43)
+- Total privesc patterns: **50+**
+- Enhanced EKS security analysis with attack vectors
+
+### Technical Details
+- New interfaces: `PrivescPattern`, `AttackChain`, `AttackChainStep`
+- Attack chain templates with step-by-step paths
+- Blast radius calculation algorithm
+- Permission matching with wildcard support
+- Group policy enumeration for comprehensive permission analysis
+
+---
+
 ## [1.4.2] - 2026-01-12
 
 ### Changed
